@@ -1,0 +1,21 @@
+# Task: AnnaDaan Firebase Integration
+
+- `[x]` Firebase Project Setup
+    - `[x]` Create new Firebase project (`annadaan-app-2026-v1`)
+    - `[x]` Initialize Firebase in project directory
+    - `[x]` Fetch `google-services.json` (Android)
+    - `[x]` Fetch `GoogleService-Info.plist` (iOS)
+- `[x]` Dependency Updates
+    - `[x]` Add `firebase_core`, `firebase_auth`, `cloud_firestore` to `pubspec.yaml`
+    - `[x]` Run `flutter pub get`
+- `[x]` Service Layer Implementation
+    - `[x]` `FirebaseService` (Initialization)
+    - `[x]` `AuthService` (Phone Auth logic)
+    - `[x]` `FirestoreService` (Data operations)
+- `[x]` UI Integration
+    - `[x]` Update Login/OTP screens with `AuthService`
+    - `[x]` Connect Dashboard to Firestore stream
+    - `[x]` Connect Upload flow to Firestore save
+- `[ ]` Verification
+    - `[ ]` Test Phone Auth flow
+    - `[ ]` Verify real-time data updates

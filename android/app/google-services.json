@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "416339301679",
+    "project_id": "annadaan-app-2026-v1",
+    "storage_bucket": "annadaan-app-2026-v1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:416339301679:android:9bdc4c3188bb8b97c3bdda",
+        "android_client_info": {
+          "package_name": "com.example.anadanaapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2xt-AHbVtjeDAlNb5nsCjMgL5TK3w9NM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
