@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../theme/app_colors.dart';
 import 'status_badge.dart';
 
@@ -15,8 +16,11 @@ class AnnaDaanCard extends StatelessWidget {
   final ServingStatus status;
   final bool isVerified;
   final int likes;
+  final bool isLiked;
   final int comments;
   final VoidCallback? onTap;
+  final VoidCallback? onLikeTap;
+  final VoidCallback? onChatTap;
 
   const AnnaDaanCard({
     super.key,
@@ -30,8 +34,11 @@ class AnnaDaanCard extends StatelessWidget {
     required this.status,
     this.isVerified = false,
     this.likes = 0,
+    this.isLiked = false,
     this.comments = 0,
     this.onTap,
+    this.onLikeTap,
+    this.onChatTap,
   });
 
   Widget _buildImage() {
@@ -44,13 +51,14 @@ class AnnaDaanCard extends StatelessWidget {
       );
     }
 
-    if (imageUrl != null) {
+    final String? localImageUrl = imageUrl;
+    if (localImageUrl != null && localImageUrl.isNotEmpty) {
       // Check if it's a Base64 string
-      if (imageUrl!.startsWith('data:image') || !imageUrl!.startsWith('http')) {
+      if (localImageUrl.startsWith('data:image') || !localImageUrl.startsWith('http')) {
         try {
-          final String base64Str = imageUrl!.contains(',') 
-              ? imageUrl!.split(',').last 
-              : imageUrl!;
+          final String base64Str = localImageUrl.contains(',') 
+              ? localImageUrl.split(',').last 
+              : localImageUrl;
           return Image.memory(
             base64Decode(base64Str),
             height: 180,
@@ -66,7 +74,7 @@ class AnnaDaanCard extends StatelessWidget {
 
       // Normal Network Image
       return Image.network(
-        imageUrl!,
+        localImageUrl,
         height: 180,
         width: double.infinity,
         fit: BoxFit.cover,
@@ -197,21 +205,29 @@ class AnnaDaanCard extends StatelessWidget {
                   Row(
                     children: [
                       _ActionButton(
-                        icon: Icons.favorite_border,
+                        icon: isLiked ? Icons.favorite : Icons.favorite_border,
+                        iconColor: isLiked ? Colors.red : null,
                         label: likes.toString(),
-                        onPressed: () {},
+                        onPressed: onLikeTap ?? () {},
                       ),
                       const SizedBox(width: 16),
                       _ActionButton(
                         icon: Icons.chat_bubble_outline,
-                        label: comments.toString(),
-                        onPressed: () {},
+                        label: 'Chat',
+                        onPressed: onChatTap ?? () {},
                       ),
                       const Spacer(),
                       _ActionButton(
                         icon: Icons.share_outlined,
                         label: 'Share',
-                        onPressed: () {},
+                        onPressed: () {
+                          Share.share(
+                            'Join us for Anadanam at $title!\n\n'
+                            '🍴 Food: $food\n'
+                            '⏰ Time: $time\n\n'
+                            'Download the Anadanam app to find more food services around you.',
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -227,11 +243,13 @@ class AnnaDaanCard extends StatelessWidget {
 
 class _ActionButton extends StatelessWidget {
   final IconData icon;
+  final Color? iconColor;
   final String label;
   final VoidCallback onPressed;
 
   const _ActionButton({
     required this.icon,
+    this.iconColor,
     required this.label,
     required this.onPressed,
   });
@@ -242,7 +260,7 @@ class _ActionButton extends StatelessWidget {
       onTap: onPressed,
       child: Row(
         children: [
-          Icon(icon, size: 20, color: AppColors.textSecondary),
+          Icon(icon, size: 20, color: iconColor ?? AppColors.textSecondary),
           const SizedBox(width: 6),
           Text(
             label,

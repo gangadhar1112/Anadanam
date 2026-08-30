@@ -18,7 +18,6 @@ class ChatService {
     return _db
         .collection('chats')
         .where('participants', arrayContains: user.uid)
-        .orderBy('lastMessageTime', descending: true)
         .snapshots();
   }
 

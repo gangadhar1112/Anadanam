@@ -1,12 +1,15 @@
 import 'dart:ui' as ui;
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/firestore_service.dart';
+import '../../core/providers/location_provider.dart';
 import 'anadanam_details_screen.dart';
 
 class MapViewScreen extends ConsumerStatefulWidget {
@@ -161,18 +164,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
   }
 
   String _calculateDistance(double? lat, double? lng) {
-    if (lat == null || lng == null) return '';
-    final distance = Geolocator.distanceBetween(
-      _initialPosition.latitude,
-      _initialPosition.longitude,
-      lat,
-      lng,
-    );
-    if (distance < 1000) {
-      return '${distance.toStringAsFixed(0)} m away';
-    } else {
-      return '${(distance / 1000).toStringAsFixed(1)} km away';
-    }
+    return ref.read(locationProvider.notifier).calculateDistance(lat, lng);
   }
 
   void _onMarkerTapped(Map<String, dynamic> data) {
@@ -364,12 +356,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                   tag: 'anadanam_${data['id']}',
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      data['imageUrl'] ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80',
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                    ),
+                    child: _buildPreviewImage(data['imageUrl']),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -379,7 +366,6 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
                             child: Text(
@@ -392,6 +378,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          const SizedBox(width: 8),
                           if (distance.isNotEmpty)
                             Text(
                               distance,
@@ -412,22 +399,54 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AnadanamDetailsScreen(data: data),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => AnadanamDetailsScreen(data: data),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 40),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('View'),
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 40),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
                           ),
-                        ),
-                        child: const Text('View Details'),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                final lat = data['latitude'] as double?;
+                                final lng = data['longitude'] as double?;
+                                if (lat == null || lng == null) return;
+                                final url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
+                                final uri = Uri.parse(url);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              icon: const Icon(Icons.navigation, size: 16),
+                              label: const Text('Directions'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryLight,
+                                foregroundColor: AppColors.primary,
+                                elevation: 0,
+                                minimumSize: const Size(double.infinity, 40),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -437,6 +456,37 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPreviewImage(String? imageUrl) {
+    const String placeholder = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80';
+    
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Image.network(placeholder, width: 100, height: 100, fit: BoxFit.cover);
+    }
+
+    if (imageUrl.startsWith('data:image') || !imageUrl.startsWith('http')) {
+      try {
+        final String base64Str = imageUrl.contains(',') ? imageUrl.split(',').last : imageUrl;
+        return Image.memory(
+          base64Decode(base64Str),
+          width: 100,
+          height: 100,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Image.network(placeholder, width: 100, height: 100, fit: BoxFit.cover),
+        );
+      } catch (e) {
+        return Image.network(placeholder, width: 100, height: 100, fit: BoxFit.cover);
+      }
+    }
+
+    return Image.network(
+      imageUrl,
+      width: 100,
+      height: 100,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Image.network(placeholder, width: 100, height: 100, fit: BoxFit.cover),
     );
   }
 }

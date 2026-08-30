@@ -22,16 +22,18 @@ class FirestoreService {
   Stream<QuerySnapshot> streamActiveAnadanam({
     String? category,
     String? foodType,
-    double? maxDistance, // Placeholder for future geo-queries
+    double? maxDistance,
   }) {
     Query query = anadanamCollection.where('status', isEqualTo: 'approved');
     
-    if (category != null && category != 'All') {
+    // Only apply type filter if the category matches known types
+    final knownTypes = ['Temple', 'NGO', 'Community', 'Other'];
+    if (category != null && category != 'All' && knownTypes.contains(category)) {
       query = query.where('type', isEqualTo: category);
     }
     
-    // Temporarily removed orderBy to bypass all composite index requirements.
-    // This allows categories like 'Temple' to work instantly.
+    // Note: Breakfast, Lunch, Dinner, Serving Now filters are handled client-side 
+    // in MainDashboard to avoid complex composite index requirements during dev.
     return query.snapshots();
   }
 
@@ -124,5 +126,27 @@ class FirestoreService {
   // Delete Anadanam post (Reject)
   Future<void> deleteAnadanam(String id) async {
     await anadanamCollection.doc(id).delete();
+  }
+
+  // Toggle Like
+  Future<void> toggleLike(String id, String userId) async {
+    final docRef = anadanamCollection.doc(id);
+    final doc = await docRef.get();
+    if (!doc.exists) return;
+
+    final data = doc.data() as Map<String, dynamic>;
+    final List likedBy = data['likedBy'] ?? [];
+
+    if (likedBy.contains(userId)) {
+      await docRef.update({
+        'likes': FieldValue.increment(-1),
+        'likedBy': FieldValue.arrayRemove([userId]),
+      });
+    } else {
+      await docRef.update({
+        'likes': FieldValue.increment(1),
+        'likedBy': FieldValue.arrayUnion([userId]),
+      });
+    }
   }
 }

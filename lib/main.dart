@@ -11,11 +11,19 @@ import 'features/auth/splash_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Firebase should be initialized exactly once.
-  if (Firebase.apps.isEmpty) {
+
+
+  // Initialize Firebase with a safety check to prevent "duplicate-app" errors.
+  try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+  } catch (e) {
+    if (e.toString().contains('duplicate-app')) {
+      debugPrint('Firebase already initialized.');
+    } else {
+      rethrow;
+    }
   }
 
   // Register background FCM handler.

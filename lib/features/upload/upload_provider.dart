@@ -85,8 +85,9 @@ class AnadanamFormData {
       
       expireDateTime = parsedTime ?? now.add(const Duration(hours: 4));
       
-      // If the time has already passed today, it expires tomorrow
-      if (expireDateTime.isBefore(now) && isRecurring) {
+      // If the time has already passed today, assume it's for the next session/tomorrow
+      // This prevents items from being immediately hidden if uploaded after the end time.
+      if (expireDateTime.isBefore(now)) {
         expireDateTime = expireDateTime.add(const Duration(days: 1));
       }
     } catch (e) {

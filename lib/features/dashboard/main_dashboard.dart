@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/annadaana_card.dart';
 import '../../core/widgets/filter_chip_bar.dart';
 import '../../core/widgets/status_badge.dart';
 import '../../core/services/firestore_service.dart';
-import '../upload/create_anadanam_screen.dart';
-import '../anadanam/anadanam_details_screen.dart';
-import '../anadanam/map_view_screen.dart';
-import '../profile/profile_screen.dart';
-import '../profile/notifications_screen.dart';
-import '../chat/chat_list_screen.dart';
+import 'package:anadanaapp/features/upload/create_anadanam_screen.dart';
+import 'package:anadanaapp/features/anadanam/anadanam_details_screen.dart';
+import 'package:anadanaapp/features/anadanam/map_view_screen.dart';
+import 'package:anadanaapp/features/profile/profile_screen.dart';
+import 'package:anadanaapp/features/profile/notifications_screen.dart';
+import 'package:anadanaapp/features/chat/chat_list_screen.dart';
+import 'package:anadanaapp/features/chat/chat_detail_screen.dart';
 import 'search_screen.dart';
 import 'filter_bottom_sheet.dart';
+import '../../core/providers/location_provider.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/chat_service.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -122,13 +128,13 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                 'Your Location',
                 style: Theme.of(context).textTheme.labelSmall,
               ),
-              const Row(
+              Row(
                 children: [
                   Text(
-                    'Bengaluru',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ref.watch(locationProvider).currentAddress,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  Icon(Icons.keyboard_arrow_down, size: 16),
+                  const Icon(Icons.keyboard_arrow_down, size: 16),
                 ],
               ),
             ],
@@ -231,6 +237,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           'Dinner',
           'Temple',
           'NGO',
+          'Community',
         ],
         selectedFilter: _selectedCategory,
         onFilterSelected: (filter) {
@@ -263,17 +270,99 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
 
         var docs = snapshot.data?.docs ?? [];
         final now = DateTime.now();
+        final currentUserId = ref.watch(authServiceProvider).currentUser?.uid;
 
-        // Filter out expired items client-side to handle real-time clock changes
+        // Filter out expired items and apply advanced category filters client-side
         final activeDocs = docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          
+          // 1. Check Expiration
           if (data['expireAt'] != null) {
             final expireAt = (data['expireAt'] as Timestamp).toDate();
-            // Debug print to console to verify times
-            debugPrint('Item: ${data['name']}, Expires: $expireAt, Now: $now');
-            return expireAt.isAfter(now);
+            if (expireAt.isBefore(now)) return false;
+          } else {
+            return false; // Hide items without expireAt (old data)
           }
-          return false; // HIDE items that don't have the expireAt field (clean up old test data)
+
+          // 2. Apply Category Filters (Client-side for complex ones)
+          final category = _activeFilters['category'];
+          if (category == null || category == 'All') return true;
+
+          // Handle "Near Me" Filter (Within 3 km as requested)
+          if (category == 'Near Me') {
+            final lat = data['latitude'] as double?;
+            final lng = data['longitude'] as double?;
+            if (lat == null || lng == null) return false;
+            
+            final currentLatLng = ref.read(locationProvider).currentLatLng;
+            if (currentLatLng == null) return true; // Show all if location not ready
+
+            final distance = Geolocator.distanceBetween(
+              currentLatLng.latitude,
+              currentLatLng.longitude,
+              lat,
+              lng,
+            );
+            return distance <= 3000; // 3km threshold
+          }
+
+          // Handle known types
+          final knownTypes = ['Temple', 'NGO', 'Community', 'Other'];
+          if (knownTypes.contains(category)) {
+            return data['type'] == category;
+          }
+
+          // Handle Meal Time Filters
+          final startTimeStr = data['startTime'] as String? ?? '';
+          final endTimeStr = data['endTime'] as String? ?? '';
+          
+          DateTime? parseTime(String timeStr, DateTime date) {
+            try {
+              final formats = [
+                DateFormat.jm(), // "12:00 PM"
+                DateFormat('h:mm a'), 
+                DateFormat('HH:mm'), 
+                DateFormat('H:mm'), 
+              ];
+              
+              for (var f in formats) {
+                try {
+                  final parsed = f.parse(timeStr.trim());
+                  return DateTime(date.year, date.month, date.day, parsed.hour, parsed.minute);
+                } catch (_) {}
+              }
+              return null;
+            } catch (_) {
+              return null;
+            }
+          }
+
+          if (category == 'Serving Now') {
+            final isRecurring = data['isRecurring'] as bool? ?? false;
+            final expireAt = (data['expireAt'] as Timestamp).toDate();
+            
+            // Check if it's even for today (expireAt is the end of the next session)
+            // If it's tomorrow, it can't be "Serving Now" today.
+            if (expireAt.day != now.day || expireAt.month != now.month || expireAt.year != now.year) {
+              return false; 
+            }
+
+            final startTime = parseTime(startTimeStr, now);
+            final endTime = parseTime(endTimeStr, now);
+            if (startTime == null || endTime == null) return false;
+            
+            return now.isAfter(startTime) && now.isBefore(endTime);
+          }
+
+          // Breakfast (5 AM - 11 AM), Lunch (11 AM - 4 PM), Dinner (4 PM - 11 PM)
+          final startTime = parseTime(startTimeStr, now);
+          if (startTime != null) {
+            if (category == 'Breakfast') return startTime.hour >= 5 && startTime.hour < 11;
+            if (category == 'Lunch') return startTime.hour >= 11 && startTime.hour < 16;
+            if (category == 'Dinner') return startTime.hour >= 16 && startTime.hour < 23;
+          }
+
+          return true;
         }).toList();
 
         if (activeDocs.isEmpty) {
@@ -314,10 +403,18 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
             children: [
               ...activeDocs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
+                data['id'] = doc.id;
+                final distance = ref.read(locationProvider.notifier).calculateDistance(
+                      data['latitude'] as double?,
+                      data['longitude'] as double?,
+                    );
+                final List likedBy = data['likedBy'] ?? [];
+                final isLiked = currentUserId != null && likedBy.contains(currentUserId);
+
                 return AnnaDaanCard(
                   title: data['name'] ?? 'No Name',
                   type: data['type'] ?? 'Community Food',
-                  distance: '1.2 km away',
+                  distance: distance,
                   time: '${data['startTime']} – ${data['endTime']}',
                   food: data['foodDetails'] ?? '',
                   imageUrl: data['imageUrl'] ??
@@ -325,7 +422,59 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                   status: ServingStatus.servingNow,
                   isVerified: data['isVerified'] ?? false,
                   likes: data['likes'] ?? 0,
+                  isLiked: isLiked,
                   comments: data['comments'] ?? 0,
+                  onLikeTap: () {
+                    if (currentUserId != null) {
+                      ref.read(firestoreServiceProvider).toggleLike(doc.id, currentUserId);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please login to like.')),
+                      );
+                    }
+                  },
+                  onChatTap: () async {
+                    final otherUserId = data['userId'];
+                    final otherUserName = data['name'] ?? 'Provider';
+                    if (otherUserId == null) return;
+                    if (currentUserId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please login to chat.')),
+                      );
+                      return;
+                    }
+
+                    // Show loading
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(child: CircularProgressIndicator()),
+                    );
+
+                    try {
+                      final chatId = await ref.read(chatServiceProvider).getOrCreateChat(otherUserId, otherUserName);
+                      if (context.mounted) {
+                        Navigator.pop(context); // Close loading
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatDetailScreen(
+                              chatId: chatId,
+                              otherUserName: otherUserName,
+                              otherUserId: otherUserId,
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e')),
+                        );
+                      }
+                    }
+                  },
                   onTap: () {
                     Navigator.push(
                       context,

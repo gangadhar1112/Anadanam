@@ -15,23 +15,22 @@
       },
       "oauth_client": [
         {
-          "client_id": "938569948543-ct7t1nsv3vjm98cllc8e1vscne0c4ufh.apps.googleusercontent.com",
-          "client_type": 3
+          "client_id": "938569948543-dqg2ngm7ciprn06qf8lnthnfo90qkij5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vgsolutions.annadanam",
+            "certificate_hash": "7932be915967005909c1c4f0ab2aaf77118b9e40"
+          }
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBS-fptiHoH2bdQKhNJzzoCwPaS16_UGMU"
+          "current_key": "AIzaSyCnlwLBz6taemb9eCv7gxwxt85w0WKBPZ8"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "938569948543-ct7t1nsv3vjm98cllc8e1vscne0c4ufh.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

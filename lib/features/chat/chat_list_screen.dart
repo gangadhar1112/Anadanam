@@ -23,6 +23,36 @@ class ChatListScreen extends ConsumerWidget {
           : StreamBuilder<QuerySnapshot>(
               stream: ref.watch(chatServiceProvider).getMyChats(),
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.lock_outline, size: 60, color: Colors.red),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Access Denied',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'We couldn\'t load your chats. This usually happens if Firestore security rules are too restrictive.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () => ref.refresh(chatServiceProvider),
+                            child: const Text('Try Again'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }

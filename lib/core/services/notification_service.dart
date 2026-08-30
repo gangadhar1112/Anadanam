@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_service.dart';
+import '../../firebase_options.dart';
 
 final notificationServiceProvider =
 Provider<NotificationService>((ref) {
@@ -352,9 +353,14 @@ Future<void> firebaseMessagingBackgroundHandler(
   try {
     // Background messages run in a separate isolate.
     // Firebase must be initialized in that isolate.
-
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } catch (e) {
+      if (!e.toString().contains('duplicate-app')) {
+        rethrow;
+      }
     }
 
     print(
