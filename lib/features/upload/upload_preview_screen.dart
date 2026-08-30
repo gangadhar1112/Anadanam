@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
@@ -18,6 +20,24 @@ class UploadPreviewScreen extends ConsumerStatefulWidget {
 class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
   bool _isSubmitting = false;
 
+  Future<String?> _imageToBase64(String path) async {
+    try {
+      final File file = File(path);
+      final int sizeInBytes = await file.length();
+      
+      // If file is still too large (> 500KB), we might have issues
+      if (sizeInBytes > 500000) {
+        debugPrint('Warning: Image is large (${(sizeInBytes / 1024).toStringAsFixed(2)} KB)');
+      }
+      
+      final List<int> bytes = await file.readAsBytes();
+      return base64Encode(bytes);
+    } catch (e) {
+      debugPrint('Error converting image to Base64: $e');
+      return null;
+    }
+  }
+
   void _submit() async {
     setState(() => _isSubmitting = true);
 
@@ -33,7 +53,21 @@ class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
     }
 
     try {
-      await ref.read(firestoreServiceProvider).addAnadanam(formData.toMap(user.uid));
+      String imageUrl = formData.imageUrl;
+      
+      // Convert local image to Base64 if available
+      if (formData.imagePath != null) {
+        final base64String = await _imageToBase64(formData.imagePath!);
+        if (base64String != null) {
+          imageUrl = base64String;
+        }
+      }
+
+      final dataToSave = formData.copyWith(imageUrl: imageUrl).toMap(user.uid);
+      await ref.read(firestoreServiceProvider).addAnadanam(dataToSave);
+      
+      // Reset form
+      ref.read(anadanamFormProvider.notifier).reset();
       
       if (!mounted) return;
       
@@ -43,10 +77,12 @@ class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
         (route) => false,
       );
     } catch (e) {
-      setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to submit. Please try again.')),
-      );
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -71,10 +107,11 @@ class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
             AnnaDaanCard(
               title: formData.name,
               type: formData.type,
-              distance: '1.2 km away',
+              distance: 'Location Selected',
               time: '${formData.startTime} – ${formData.endTime}',
               food: formData.foodDetails,
-              imageUrl: formData.imageUrl,
+              imageUrl: formData.imagePath != null ? null : formData.imageUrl,
+              imageFile: formData.imagePath != null ? File(formData.imagePath!) : null,
               status: ServingStatus.today,
               likes: 0,
               comments: 0,
@@ -85,13 +122,20 @@ class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             const SizedBox(height: 8),
-            const Text('Whitefield, Bengaluru'), // Mock address
+            Text(formData.address.isEmpty ? 'Location selected on map' : formData.address),
             const SizedBox(height: 40),
-            ElevatedButton(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Submit Anadanam'),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSubmitting ? null : _submit,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text('Submit Anadanam'),
+              ),
             ),
             const SizedBox(height: 12),
             Center(

@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import '../dashboard/main_dashboard.dart';
 import 'login_screen.dart';
 
-class OnboardingScreen extends StatelessWidget {
+class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -66,12 +69,23 @@ class OnboardingScreen extends StatelessWidget {
                           MaterialPageRoute(builder: (context) => const LoginScreen()),
                         );
                       },
-                      child: const Text('Continue with Mobile OTP'),
+                      child: const Text('Continue with Email'),
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: () {
-                        // Navigate to Guest Dashboard
+                      onPressed: () async {
+                        final result = await ref.read(authServiceProvider).signInAnonymously();
+                        if (result != null && context.mounted) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const MainDashboard()),
+                            (route) => false,
+                          );
+                        } else if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Failed to continue as guest. Please try again.')),
+                          );
+                        }
                       },
                       child: Text(
                         'Continue as Guest',

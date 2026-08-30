@@ -1,26 +1,37 @@
 {
   "project_info": {
-    "project_number": "416339301679",
-    "project_id": "annadaan-app-2026-v1",
-    "storage_bucket": "annadaan-app-2026-v1.firebasestorage.app"
+    "project_number": "938569948543",
+    "firebase_url": "https://gothic-sequence-118012.firebaseio.com",
+    "project_id": "gothic-sequence-118012",
+    "storage_bucket": "gothic-sequence-118012.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:416339301679:android:9bdc4c3188bb8b97c3bdda",
+        "mobilesdk_app_id": "1:938569948543:android:84f2a67048b46db33c8e4a",
         "android_client_info": {
-          "package_name": "com.example.anadanaapp"
+          "package_name": "com.vgsolutions.annadanam"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "938569948543-ct7t1nsv3vjm98cllc8e1vscne0c4ufh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyC2xt-AHbVtjeDAlNb5nsCjMgL5TK3w9NM"
+          "current_key": "AIzaSyBS-fptiHoH2bdQKhNJzzoCwPaS16_UGMU"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "938569948543-ct7t1nsv3vjm98cllc8e1vscne0c4ufh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

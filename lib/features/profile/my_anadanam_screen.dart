@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/firestore_service.dart';
 
-class MyAnadanamScreen extends StatelessWidget {
+class MyAnadanamScreen extends ConsumerWidget {
   const MyAnadanamScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -24,33 +29,76 @@ class MyAnadanamScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _buildList(context, 'Active'),
-            _buildList(context, 'Pending'),
-            _buildList(context, 'Past'),
+            _buildList(ref, 'approved'),
+            _buildList(ref, 'pending'),
+            _buildList(ref, 'rejected'), // Assuming Past/Rejected for now
           ],
         ),
       ),
     );
   }
 
-  Widget _buildList(BuildContext context, String status) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: 2,
-      itemBuilder: (context, index) {
-        return _buildItem(context, status);
+  Widget _buildList(WidgetRef ref, String status) {
+    final user = ref.watch(authServiceProvider).currentUser;
+    if (user == null) return const Center(child: Text('Please login'));
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: ref.watch(firestoreServiceProvider).streamUserAnadanam(user.uid, status: status),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.restaurant, size: 64, color: Colors.grey[300]),
+                const SizedBox(height: 16),
+                Text(
+                  'No posts found',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final docs = snapshot.data!.docs;
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(20),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            final id = docs[index].id;
+            return _buildItem(context, data, id);
+          },
+        );
       },
     );
   }
 
-  Widget _buildItem(BuildContext context, String status) {
+  Widget _buildItem(BuildContext context, Map<String, dynamic> data, String id) {
+    final status = data['status'] ?? 'pending';
+    final title = data['name'] ?? 'Untitled';
+    final imageUrl = data['imageUrl'] ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80';
+    final timestamp = data['createdAt'] as Timestamp?;
+    final dateStr = timestamp != null 
+        ? DateFormat('MMM d, h:mm a').format(timestamp.toDate()) 
+        : 'Unknown date';
+
     Color statusColor;
     switch (status) {
-      case 'Active':
+      case 'approved':
         statusColor = AppColors.success;
         break;
-      case 'Pending':
+      case 'pending':
         statusColor = AppColors.warning;
+        break;
+      case 'rejected':
+        statusColor = AppColors.error;
         break;
       default:
         statusColor = AppColors.textHint;
@@ -65,10 +113,16 @@ class MyAnadanamScreen extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.network(
-                'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80',
+                imageUrl,
                 width: 80,
                 height: 80,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 80,
+                  height: 80,
+                  color: Colors.grey[200],
+                  child: const Icon(Icons.image_not_supported),
+                ),
               ),
             ),
             const SizedBox(width: 16),
@@ -77,11 +131,11 @@ class MyAnadanamScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Sri Sai Anadanam',
+                    title,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 4),
-                  const Text('Aug 21, 2026 • 12:00 PM'),
+                  Text(dateStr),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -90,7 +144,7 @@ class MyAnadanamScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      status,
+                      status.toUpperCase(),
                       style: TextStyle(
                         color: statusColor,
                         fontSize: 10,
@@ -103,7 +157,9 @@ class MyAnadanamScreen extends StatelessWidget {
             ),
             IconButton(
               icon: const Icon(Icons.more_vert),
-              onPressed: () {},
+              onPressed: () {
+                // Future: Add options to edit/delete
+              },
             ),
           ],
         ),

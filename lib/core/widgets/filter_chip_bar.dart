@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-class FilterChipBar extends StatefulWidget {
+class FilterChipBar extends StatelessWidget {
   final List<String> filters;
+  final String selectedFilter;
   final Function(String) onFilterSelected;
 
   const FilterChipBar({
     super.key,
     required this.filters,
+    required this.selectedFilter,
     required this.onFilterSelected,
   });
-
-  @override
-  State<FilterChipBar> createState() => _FilterChipBarState();
-}
-
-class _FilterChipBarState extends State<FilterChipBar> {
-  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -25,19 +20,16 @@ class _FilterChipBarState extends State<FilterChipBar> {
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         scrollDirection: Axis.horizontal,
-        itemCount: widget.filters.length,
+        itemCount: filters.length,
         separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final isSelected = _selectedIndex == index;
+          final isSelected = filters[index] == selectedFilter;
           return ChoiceChip(
-            label: Text(widget.filters[index]),
+            label: Text(filters[index]),
             selected: isSelected,
             onSelected: (selected) {
               if (selected) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-                widget.onFilterSelected(widget.filters[index]);
+                onFilterSelected(filters[index]);
               }
             },
             selectedColor: AppColors.primary,

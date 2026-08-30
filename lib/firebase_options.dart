@@ -38,19 +38,19 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyC2xt-AHbVtjeDAlNb5nsCjMgL5TK3w9NM',
-    appId: '1:416339301679:android:9bdc4c3188bb8b97c3bdda',
-    messagingSenderId: '416339301679',
-    projectId: 'annadaan-app-2026-v1',
-    storageBucket: 'annadaan-app-2026-v1.firebasestorage.app',
+    apiKey: 'AIzaSyBmh44kvw6z_dxoKgf8NhX15v_xXl4eHRQ',
+    appId: '1:938569948543:android:84f2a67048b46db33c8e4a',
+    messagingSenderId: '938569948543',
+    projectId: 'gothic-sequence-118012',
+    storageBucket: 'gothic-sequence-118012.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCO8QTN1XKWVFqY4clRJh-711gtfKUmglw',
-    appId: '1:416339301679:ios:baef02de22925dbec3bdda',
-    messagingSenderId: '416339301679',
-    projectId: 'annadaan-app-2026-v1',
-    storageBucket: 'annadaan-app-2026-v1.firebasestorage.app',
-    iosBundleId: 'com.example.anadanaapp',
+    apiKey: 'AIzaSyBmh44kvw6z_dxoKgf8NhX15v_xXl4eHRQ',
+    appId: '1:938569948543:ios:baef02de22925dbec3bdda',
+    messagingSenderId: '938569948543',
+    projectId: 'gothic-sequence-118012',
+    storageBucket: 'gothic-sequence-118012.firebasestorage.app',
+    iosBundleId: 'com.vgsolutions.annadanam',
   );
 }

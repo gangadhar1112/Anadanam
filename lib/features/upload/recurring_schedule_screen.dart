@@ -1,21 +1,53 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import 'upload_preview_screen.dart';
+import 'upload_provider.dart';
 
-class RecurringScheduleScreen extends StatefulWidget {
+class RecurringScheduleScreen extends ConsumerStatefulWidget {
   const RecurringScheduleScreen({super.key});
 
   @override
-  State<RecurringScheduleScreen> createState() => _RecurringScheduleScreenState();
+  ConsumerState<RecurringScheduleScreen> createState() => _RecurringScheduleScreenState();
 }
 
-class _RecurringScheduleScreenState extends State<RecurringScheduleScreen> {
-  bool _isRecurring = false;
+class _RecurringScheduleScreenState extends ConsumerState<RecurringScheduleScreen> {
   final List<String> _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  final List<bool> _selectedDays = List.generate(7, (_) => false);
+
+  Future<void> _selectTime(BuildContext context, bool isStart) async {
+    final formData = ref.read(anadanamFormProvider);
+    final initialTime = isStart ? formData.startTime : formData.endTime;
+    
+    // Parse existing time string to TimeOfDay
+    TimeOfDay initialTimeOfDay;
+    try {
+      final format = DateFormat.jm(); // "12:00 PM"
+      final date = format.parse(initialTime);
+      initialTimeOfDay = TimeOfDay.fromDateTime(date);
+    } catch (e) {
+      initialTimeOfDay = isStart ? const TimeOfDay(hour: 12, minute: 0) : const TimeOfDay(hour: 14, minute: 0);
+    }
+
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: initialTimeOfDay,
+    );
+
+    if (picked != null) {
+      final formattedTime = picked.format(context);
+      if (isStart) {
+        ref.read(anadanamFormProvider.notifier).updateTime(formattedTime, formData.endTime);
+      } else {
+        ref.read(anadanamFormProvider.notifier).updateTime(formData.startTime, formattedTime);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final formData = ref.watch(anadanamFormProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Serving Schedule'),
@@ -34,33 +66,43 @@ class _RecurringScheduleScreenState extends State<RecurringScheduleScreen> {
             RadioListTile<bool>(
               title: const Text('One Time'),
               value: false,
-              groupValue: _isRecurring,
-              onChanged: (val) => setState(() => _isRecurring = val!),
+              groupValue: formData.isRecurring,
+              onChanged: (val) => ref.read(anadanamFormProvider.notifier).updateIsRecurring(val!),
               activeColor: AppColors.primary,
             ),
             RadioListTile<bool>(
               title: const Text('Recurring'),
               value: true,
-              groupValue: _isRecurring,
-              onChanged: (val) => setState(() => _isRecurring = val!),
+              groupValue: formData.isRecurring,
+              onChanged: (val) => ref.read(anadanamFormProvider.notifier).updateIsRecurring(val!),
               activeColor: AppColors.primary,
             ),
             
-            if (_isRecurring) ...[
+            if (formData.isRecurring) ...[
               const SizedBox(height: 24),
               const Text('Select serving days', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
                 children: List.generate(_days.length, (index) {
+                  final day = _days[index];
+                  final isSelected = formData.recurringDays.contains(day);
                   return FilterChip(
-                    label: Text(_days[index]),
-                    selected: _selectedDays[index],
-                    onSelected: (val) => setState(() => _selectedDays[index] = val),
+                    label: Text(day),
+                    selected: isSelected,
+                    onSelected: (val) {
+                      final updatedDays = List<String>.from(formData.recurringDays);
+                      if (val) {
+                        updatedDays.add(day);
+                      } else {
+                        updatedDays.remove(day);
+                      }
+                      ref.read(anadanamFormProvider.notifier).updateDays(updatedDays);
+                    },
                     selectedColor: AppColors.primary,
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(
-                      color: _selectedDays[index] ? Colors.white : AppColors.charcoal,
+                      color: isSelected ? Colors.white : AppColors.charcoal,
                     ),
                   );
                 }),
@@ -73,11 +115,17 @@ class _RecurringScheduleScreenState extends State<RecurringScheduleScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _TimePickerField(label: 'Start Time', time: '12:00 PM'),
+                  child: InkWell(
+                    onTap: () => _selectTime(context, true),
+                    child: _TimePickerField(label: 'Start Time', time: formData.startTime),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _TimePickerField(label: 'End Time', time: '02:00 PM'),
+                  child: InkWell(
+                    onTap: () => _selectTime(context, false),
+                    child: _TimePickerField(label: 'End Time', time: formData.endTime),
+                  ),
                 ),
               ],
             ),

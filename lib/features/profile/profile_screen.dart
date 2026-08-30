@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/firestore_service.dart';
+import '../../core/services/notification_service.dart';
+import 'my_anadanam_screen.dart';
+import '../auth/login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authService = ref.watch(authServiceProvider);
+    final user = authService.currentUser;
+    final firestoreService = ref.watch(firestoreServiceProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
@@ -16,31 +27,48 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            _buildProfileHeader(context),
-            const SizedBox(height: 32),
-            _buildMenu(context),
-            const SizedBox(height: 32),
-            _buildLogoutButton(context),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
+      body: user == null
+          ? const Center(child: Text('Please login to view profile'))
+          : StreamBuilder<DocumentSnapshot>(
+              stream: firestoreService.getUserProfile(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final userData = snapshot.data?.data() as Map<String, dynamic>?;
+                final displayName = userData?['displayName'] ?? 'User';
+                final email = userData?['email'] ?? user.email ?? '';
+                final photoUrl = userData?['photoUrl'] ?? user.photoURL;
+
+                return SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      _buildProfileHeader(context, displayName, email, photoUrl),
+                      const SizedBox(height: 32),
+                      _buildMenu(context, ref),
+                      const SizedBox(height: 32),
+                      _buildLogoutButton(context, ref),
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                );
+              },
+            ),
     );
   }
 
-  Widget _buildProfileHeader(BuildContext context) {
+  Widget _buildProfileHeader(BuildContext context, String name, String email, String? photoUrl) {
     return Column(
       children: [
         Stack(
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 60,
               backgroundColor: AppColors.primaryLight,
-              child: Icon(Icons.person, size: 80, color: AppColors.primary),
+              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+              child: photoUrl == null ? const Icon(Icons.person, size: 80, color: AppColors.primary) : null,
             ),
             Positioned(
               bottom: 0,
@@ -55,26 +83,38 @@ class ProfileScreen extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Rahul Sharma',
+          name,
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        if (email.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            email,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '+91 98765 43210',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        ],
       ],
     );
   }
 
-  Widget _buildMenu(BuildContext context) {
+  Widget _buildMenu(BuildContext context, WidgetRef ref) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          _buildMenuItem(context, Icons.restaurant_menu, 'My Anadanam', onPressed: () {}),
+          _buildMenuItem(
+            context,
+            Icons.restaurant_menu,
+            'My Anadanam',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MyAnadanamScreen()),
+              );
+            },
+          ),
           _buildMenuItem(context, Icons.favorite_border, 'Liked Posts', onPressed: () {}),
           _buildMenuItem(context, Icons.chat_bubble_outline, 'My Comments', onPressed: () {}),
           const Divider(height: 40),
@@ -85,6 +125,15 @@ class ProfileScreen extends StatelessWidget {
           _buildMenuItem(context, Icons.privacy_tip_outlined, 'Privacy Policy', onPressed: () {}),
           _buildMenuItem(context, Icons.help_outline, 'Help & Support', onPressed: () {}),
           _buildMenuItem(context, Icons.info_outline, 'About AnnaDaan', onPressed: () {}),
+          const Divider(height: 40),
+          _buildMenuItem(
+            context,
+            Icons.notification_important_outlined,
+            'Test Push Notification',
+            onPressed: () {
+              ref.read(notificationServiceProvider).showTestNotification();
+            },
+          ),
         ],
       ),
     );
@@ -125,14 +174,23 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutButton(BuildContext context) {
+  Widget _buildLogoutButton(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: OutlinedButton(
-        onPressed: () {},
+        onPressed: () async {
+          await ref.read(authServiceProvider).signOut();
+          if (context.mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+        },
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.error,
           side: const BorderSide(color: AppColors.error),
+          minimumSize: const Size(double.infinity, 50),
         ),
         child: const Text('Logout'),
       ),

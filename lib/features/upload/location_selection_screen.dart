@@ -1,23 +1,65 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/theme/app_colors.dart';
 import 'recurring_schedule_screen.dart';
+import 'upload_provider.dart';
 
-class LocationSelectionScreen extends StatelessWidget {
+class LocationSelectionScreen extends ConsumerStatefulWidget {
   const LocationSelectionScreen({super.key});
 
   @override
+  ConsumerState<LocationSelectionScreen> createState() => _LocationSelectionScreenState();
+}
+
+class _LocationSelectionScreenState extends ConsumerState<LocationSelectionScreen> {
+  GoogleMapController? _mapController;
+  LatLng _center = const LatLng(12.9716, 77.5946); // Default Bengaluru
+  String _address = 'Fetching address...';
+
+  void _onCameraMove(CameraPosition position) {
+    _center = position.target;
+  }
+
+  void _onCameraIdle() {
+    // In a real app, use geocoding here
+    // For now, update coordinates and use a mock address
+    ref.read(anadanamFormProvider.notifier).updateLocation(_center.latitude, _center.longitude);
+    
+    // Simulating address fetch
+    setState(() {
+      _address = 'Lat: ${_center.latitude.toStringAsFixed(4)}, Lng: ${_center.longitude.toStringAsFixed(4)}';
+    });
+    ref.read(anadanamFormProvider.notifier).updateAddress(_address);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final formData = ref.watch(anadanamFormProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Location'),
       ),
       body: Stack(
         children: [
-          // Mock Map
-          Container(
-            color: Colors.blue[50],
-            child: const Center(
-              child: Icon(Icons.location_on, size: 60, color: AppColors.primary),
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: LatLng(formData.latitude, formData.longitude),
+              zoom: 15,
+            ),
+            onMapCreated: (controller) => _mapController = controller,
+            onCameraMove: _onCameraMove,
+            onCameraIdle: _onCameraIdle,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+          ),
+          
+          // Center Marker
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 40),
+              child: Icon(Icons.location_on, size: 50, color: AppColors.primary),
             ),
           ),
           
@@ -62,13 +104,13 @@ class LocationSelectionScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Your current location',
+                    'Selected location',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Whitefield, Bengaluru, Karnataka 560066',
-                    style: TextStyle(color: AppColors.textSecondary),
+                  Text(
+                    _address,
+                    style: const TextStyle(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton(
@@ -81,12 +123,6 @@ class LocationSelectionScreen extends StatelessWidget {
                     child: const Text('Use This Location'),
                   ),
                   const SizedBox(height: 12),
-                  Center(
-                    child: TextButton(
-                      onPressed: () {},
-                      child: const Text('Adjust location manually'),
-                    ),
-                  ),
                 ],
               ),
             ),

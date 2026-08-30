@@ -1,61 +1,73 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/firestore_service.dart';
+import 'package:intl/intl.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authServiceProvider).currentUser;
+    final firestoreService = ref.watch(firestoreServiceProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text(
-            'Today',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          const SizedBox(height: 16),
-          _buildNotificationItem(
-            context,
-            '🍚',
-            'Free food available near you',
-            'Sri Sai Anadanam is serving lunch 1.2 km away.',
-            '12 min ago',
-            isUnread: true,
-          ),
-          _buildNotificationItem(
-            context,
-            '⏰',
-            'Anadanam starts in 30 minutes',
-            'Temple Anadanam near you starts at 12:00 PM.',
-            '45 min ago',
-            isUnread: true,
-          ),
-          const SizedBox(height: 32),
-          const Text(
-            'Earlier',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          const SizedBox(height: 16),
-          _buildNotificationItem(
-            context,
-            '✓',
-            'Post Approved',
-            'Your Anadanam submission has been approved.',
-            '2 hours ago',
-          ),
-          _buildNotificationItem(
-            context,
-            '💬',
-            'New Comment',
-            'Priya commented on your post: "Very helpful information."',
-            '5 hours ago',
-          ),
-        ],
-      ),
+      body: user == null
+          ? const Center(child: Text('Please login to view notifications'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: firestoreService.streamUserNotifications(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final docs = snapshot.data?.docs ?? [];
+
+                if (docs.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.notifications_off_outlined, size: 60, color: AppColors.textHint),
+                        SizedBox(height: 16),
+                        Text('No notifications yet', style: TextStyle(color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final timestamp = data['timestamp'] as Timestamp?;
+                    final timeStr = timestamp != null
+                        ? DateFormat.jm().format(timestamp.toDate())
+                        : '';
+                    
+                    return _buildNotificationItem(
+                      context,
+                      data['icon'] ?? '🔔',
+                      data['title'] ?? '',
+                      data['body'] ?? '',
+                      timeStr,
+                      isUnread: !(data['isRead'] ?? false),
+                      onTap: () {
+                        firestoreService.markNotificationAsRead(user.uid, doc.id);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 
@@ -66,60 +78,67 @@ class NotificationsScreen extends StatelessWidget {
     String body,
     String time, {
     bool isUnread = false,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isUnread ? AppColors.primaryLight.withOpacity(0.2) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isUnread ? AppColors.primaryLight : Colors.grey[200]!,
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isUnread ? AppColors.primaryLight.withOpacity(0.2) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isUnread ? AppColors.primaryLight : Colors.grey[200]!,
+          ),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              shape: BoxShape.circle,
-            ),
-            child: Text(icon, style: const TextStyle(fontSize: 20)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: TextStyle(color: AppColors.textSecondary, height: 1.4),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  time,
-                  style: TextStyle(color: AppColors.textHint, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          if (isUnread)
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
                 shape: BoxShape.circle,
               ),
+              child: Text(icon, style: const TextStyle(fontSize: 20)),
             ),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: isUnread ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    body,
+                    style: TextStyle(color: AppColors.textSecondary, height: 1.4),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    time,
+                    style: TextStyle(color: AppColors.textHint, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            if (isUnread)
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

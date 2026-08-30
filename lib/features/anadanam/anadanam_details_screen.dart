@@ -1,12 +1,18 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/status_badge.dart';
+import '../../core/services/chat_service.dart';
+import '../chat/chat_detail_screen.dart';
 
-class AnadanamDetailsScreen extends StatelessWidget {
-  const AnadanamDetailsScreen({super.key});
+class AnadanamDetailsScreen extends ConsumerWidget {
+  final Map<String, dynamic> data;
+  
+  const AnadanamDetailsScreen({super.key, required this.data});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: Stack(
         children: [
@@ -18,13 +24,40 @@ class AnadanamDetailsScreen extends StatelessWidget {
               ),
             ],
           ),
-          _buildBottomAction(context),
+          _buildBottomAction(context, ref),
         ],
       ),
     );
   }
 
   Widget _buildAppBar(BuildContext context) {
+    final String? imageUrl = data['imageUrl'];
+    Widget imageWidget;
+
+    if (imageUrl != null) {
+      if (imageUrl.startsWith('data:image') || !imageUrl.startsWith('http')) {
+        try {
+          final String base64Str = imageUrl.contains(',') 
+              ? imageUrl.split(',').last 
+              : imageUrl;
+          imageWidget = Image.memory(
+            base64Decode(base64Str),
+            fit: BoxFit.cover,
+          );
+        } catch (e) {
+          imageWidget = _buildPlaceholder();
+        }
+      } else {
+        imageWidget = Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+        );
+      }
+    } else {
+      imageWidget = _buildPlaceholder();
+    }
+
     return SliverAppBar(
       expandedHeight: 300,
       pinned: true,
@@ -51,15 +84,22 @@ class AnadanamDetailsScreen extends StatelessWidget {
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(
-        background: Image.network(
-          'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
-          fit: BoxFit.cover,
-        ),
+        background: imageWidget,
       ),
     );
   }
 
+  Widget _buildPlaceholder() {
+    return Container(
+      color: Colors.grey[200],
+      child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
+    );
+  }
+
   Widget _buildContent(BuildContext context) {
+    final foodDetails = data['foodDetails'] as String? ?? '';
+    final foodList = foodDetails.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
     return Padding(
       padding: const EdgeInsets.all(20.0),
       child: Column(
@@ -67,20 +107,23 @@ class AnadanamDetailsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'Sri Sai Anadanam',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  data['name'] ?? 'No Name',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.verified, color: Colors.blue, size: 24),
+              if (data['isVerified'] ?? false)
+                const Icon(Icons.verified, color: Colors.blue, size: 24),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            'Temple Anadanam',
+            data['type'] ?? 'Community Food',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,
@@ -94,15 +137,15 @@ class AnadanamDetailsScreen extends StatelessWidget {
               const Icon(Icons.access_time, size: 18, color: AppColors.textHint),
               const SizedBox(width: 4),
               Text(
-                '12:00 PM – 2:00 PM',
+                '${data['startTime']} – ${data['endTime']}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(width: 16),
               const Icon(Icons.location_on_outlined, size: 18, color: AppColors.textHint),
               const SizedBox(width: 4),
-              Text(
+              const Text(
                 '1.2 km away',
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: TextStyle(fontSize: 14),
               ),
             ],
           ),
@@ -113,23 +156,22 @@ class AnadanamDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Free vegetarian lunch served to everyone daily. We welcome all community members to join us for a nutritious meal prepared with love and service.',
+            data['description'] ?? 'No description provided.',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: AppColors.textSecondary,
               height: 1.5,
             ),
           ),
           const SizedBox(height: 24),
-          Text(
-            'Food Details',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 12),
-          _buildFoodItem('🍚 Rice'),
-          _buildFoodItem('🥣 Sambar'),
-          _buildFoodItem('🥛 Curd'),
-          _buildFoodItem('🍬 Sweet'),
-          const SizedBox(height: 24),
+          if (foodList.isNotEmpty) ...[
+            Text(
+              'Food Details',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            ...foodList.map((item) => _buildFoodItem(item)),
+            const SizedBox(height: 24),
+          ],
           Text(
             'Location',
             style: Theme.of(context).textTheme.titleLarge,
@@ -139,10 +181,10 @@ class AnadanamDetailsScreen extends StatelessWidget {
             children: [
               const Icon(Icons.place, color: AppColors.primary),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Sri Sai Temple, Whitefield, Bengaluru, Karnataka 560066',
-                  style: TextStyle(fontSize: 16),
+                  data['address'] ?? 'No address provided',
+                  style: const TextStyle(fontSize: 16),
                 ),
               ),
             ],
@@ -182,7 +224,7 @@ class AnadanamDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomAction(BuildContext context) {
+  Widget _buildBottomAction(BuildContext context, WidgetRef ref) {
     return Positioned(
       bottom: 0,
       left: 0,
@@ -208,7 +250,36 @@ class AnadanamDetailsScreen extends StatelessWidget {
                 label: const Text('GET DIRECTIONS'),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: () async {
+                final otherUserId = data['userId'];
+                final otherUserName = data['name'] ?? 'Provider';
+                if (otherUserId == null) return;
+                
+                final chatId = await ref.read(chatServiceProvider).getOrCreateChat(otherUserId, otherUserName);
+                
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChatDetailScreen(
+                        chatId: chatId,
+                        otherUserName: otherUserName,
+                        otherUserId: otherUserId,
+                      ),
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryLight,
+                foregroundColor: AppColors.primary,
+                elevation: 0,
+              ),
+              child: const Icon(Icons.chat_bubble_outline),
+            ),
+            const SizedBox(width: 12),
             Container(
               decoration: BoxDecoration(
                 color: Colors.grey[100],

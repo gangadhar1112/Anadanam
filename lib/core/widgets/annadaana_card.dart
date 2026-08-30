@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import 'status_badge.dart';
@@ -8,7 +10,8 @@ class AnnaDaanCard extends StatelessWidget {
   final String distance;
   final String time;
   final String food;
-  final String imageUrl;
+  final String? imageUrl;
+  final File? imageFile;
   final ServingStatus status;
   final bool isVerified;
   final int likes;
@@ -22,13 +25,65 @@ class AnnaDaanCard extends StatelessWidget {
     required this.distance,
     required this.time,
     required this.food,
-    required this.imageUrl,
+    this.imageUrl,
+    this.imageFile,
     required this.status,
     this.isVerified = false,
     this.likes = 0,
     this.comments = 0,
     this.onTap,
   });
+
+  Widget _buildImage() {
+    if (imageFile != null) {
+      return Image.file(
+        imageFile!,
+        height: 180,
+        width: double.infinity,
+        fit: BoxFit.cover,
+      );
+    }
+
+    if (imageUrl != null) {
+      // Check if it's a Base64 string
+      if (imageUrl!.startsWith('data:image') || !imageUrl!.startsWith('http')) {
+        try {
+          final String base64Str = imageUrl!.contains(',') 
+              ? imageUrl!.split(',').last 
+              : imageUrl!;
+          return Image.memory(
+            base64Decode(base64Str),
+            height: 180,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            cacheWidth: 800, // Optimize memory usage
+            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+          );
+        } catch (e) {
+          return _buildPlaceholder();
+        }
+      }
+
+      // Normal Network Image
+      return Image.network(
+        imageUrl!,
+        height: 180,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
+    }
+
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      height: 180,
+      color: Colors.grey[200],
+      child: const Icon(Icons.image, size: 50, color: Colors.grey),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,17 +98,7 @@ class AnnaDaanCard extends StatelessWidget {
             // Image Stack
             Stack(
               children: [
-                Image.network(
-                  imageUrl,
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    height: 180,
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.image, size: 50, color: Colors.grey),
-                  ),
-                ),
+                _buildImage(),
                 Positioned(
                   top: 12,
                   left: 12,

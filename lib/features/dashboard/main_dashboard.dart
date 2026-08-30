@@ -7,6 +7,13 @@ import '../../core/widgets/filter_chip_bar.dart';
 import '../../core/widgets/status_badge.dart';
 import '../../core/services/firestore_service.dart';
 import '../upload/create_anadanam_screen.dart';
+import '../anadanam/anadanam_details_screen.dart';
+import '../anadanam/map_view_screen.dart';
+import '../profile/profile_screen.dart';
+import '../profile/notifications_screen.dart';
+import '../chat/chat_list_screen.dart';
+import 'search_screen.dart';
+import 'filter_bottom_sheet.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -17,6 +24,50 @@ class MainDashboard extends ConsumerStatefulWidget {
 
 class _MainDashboardState extends ConsumerState<MainDashboard> {
   int _currentIndex = 0;
+  String _selectedCategory = 'All';
+  final TextEditingController _searchController = TextEditingController();
+
+  Map<String, String> _activeFilters = {
+    'distance': '3 km',
+    'foodType': 'All',
+    'category': 'All',
+  };
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _showFilterBottomSheet() async {
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FilterBottomSheet(initialFilters: _activeFilters),
+    );
+
+    if (result != null) {
+      setState(() {
+        _activeFilters = result;
+        _selectedCategory = result['category']!;
+      });
+    }
+  }
+
+  void _onTabTapped(int index) {
+    if (index == 1) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const MapViewScreen()));
+    } else if (index == 2) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatListScreen()));
+    } else if (index == 3) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen()));
+    } else if (index == 4) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
+    } else {
+      setState(() => _currentIndex = index);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,12 +136,15 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.notifications_none_outlined),
-            onPressed: () {},
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())),
           ),
-          const CircleAvatar(
-            radius: 18,
-            backgroundColor: AppColors.primaryLight,
-            child: Icon(Icons.person_outline, color: AppColors.primary),
+          InkWell(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())),
+            child: const CircleAvatar(
+              radius: 18,
+              backgroundColor: AppColors.primaryLight,
+              child: Icon(Icons.person_outline, color: AppColors.primary),
+            ),
           ),
         ],
       ),
@@ -122,13 +176,44 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: TextField(
-        decoration: InputDecoration(
-          hintText: 'Search Anadanam or location',
-          prefixIcon: const Icon(Icons.search, color: AppColors.textHint),
-          fillColor: Colors.grey[100],
-          filled: true,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SearchScreen()),
+                );
+              },
+              child: IgnorePointer(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search Anadanam or location',
+                    prefixIcon: const Icon(Icons.search, color: AppColors.textHint),
+                    fillColor: Colors.grey[100],
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.tune, color: AppColors.primary),
+              onPressed: _showFilterBottomSheet,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -147,25 +232,79 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           'Temple',
           'NGO',
         ],
-        onFilterSelected: (filter) {},
+        selectedFilter: _selectedCategory,
+        onFilterSelected: (filter) {
+          setState(() {
+            _selectedCategory = filter;
+            _activeFilters['category'] = filter;
+          });
+        },
       ),
     );
   }
 
   Widget _buildFoodList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: ref.read(firestoreServiceProvider).streamActiveAnadanam(),
+      stream: ref.watch(firestoreServiceProvider).streamActiveAnadanam(
+            category: _activeFilters['category'],
+            foodType: _activeFilters['foodType'],
+          ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Padding(
+            padding: EdgeInsets.only(top: 40),
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
 
-        if (docs.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-            child: Center(child: Text('No active Anadanam nearby.')),
+        var docs = snapshot.data?.docs ?? [];
+        final now = DateTime.now();
+
+        // Filter out expired items client-side to handle real-time clock changes
+        final activeDocs = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data['expireAt'] != null) {
+            final expireAt = (data['expireAt'] as Timestamp).toDate();
+            // Debug print to console to verify times
+            debugPrint('Item: ${data['name']}, Expires: $expireAt, Now: $now');
+            return expireAt.isAfter(now);
+          }
+          return false; // HIDE items that don't have the expireAt field (clean up old test data)
+        }).toList();
+
+        if (activeDocs.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.restaurant_menu, size: 64, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No Anadanam found matching your criteria.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _activeFilters = {
+                          'distance': '3 km',
+                          'foodType': 'All',
+                          'category': 'All',
+                        };
+                        _selectedCategory = 'All';
+                      });
+                    },
+                    child: const Text('Clear all filters'),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
@@ -173,7 +312,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             children: [
-              ...docs.map((doc) {
+              ...activeDocs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 return AnnaDaanCard(
                   title: data['name'] ?? 'No Name',
@@ -187,6 +326,14 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                   isVerified: data['isVerified'] ?? false,
                   likes: data['likes'] ?? 0,
                   comments: data['comments'] ?? 0,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AnadanamDetailsScreen(data: data),
+                      ),
+                    );
+                  },
                 );
               }),
               const SizedBox(height: 80),
@@ -209,8 +356,8 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
             _buildNavItem(Icons.home, 'Home', 0),
             _buildNavItem(Icons.map_outlined, 'Map', 1),
             const SizedBox(width: 40), // Space for FAB
-            _buildNavItem(Icons.notifications_none, 'Alerts', 2),
-            _buildNavItem(Icons.person_outline, 'Me', 3),
+            _buildNavItem(Icons.chat_bubble_outline, 'Chat', 2),
+            _buildNavItem(Icons.person_outline, 'Me', 4),
           ],
         ),
       ),
@@ -220,7 +367,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
   Widget _buildNavItem(IconData icon, String label, int index) {
     final isSelected = _currentIndex == index;
     return InkWell(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _onTabTapped(index),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
