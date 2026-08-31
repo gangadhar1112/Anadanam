@@ -73,14 +73,14 @@ class MyAnadanamScreen extends ConsumerWidget {
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
             final id = docs[index].id;
-            return _buildItem(context, data, id);
+            return _buildItem(context, ref, data, id);
           },
         );
       },
     );
   }
 
-  Widget _buildItem(BuildContext context, Map<String, dynamic> data, String id) {
+  Widget _buildItem(BuildContext context, WidgetRef ref, Map<String, dynamic> data, String id) {
     final status = data['status'] ?? 'pending';
     final title = data['name'] ?? 'Untitled';
     final imageUrl = data['imageUrl'] ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80';
@@ -155,11 +155,63 @@ class MyAnadanamScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            IconButton(
+            PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
-              onPressed: () {
-                // Future: Add options to edit/delete
+              onSelected: (value) async {
+                if (value == 'delete') {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('Remove this post?'),
+                      content: const Text(
+                        'This will delete the post permanently. '
+                        'Please ensure that food serving is completed before removing, as this helps people looking for food find active locations.',
+                        style: TextStyle(height: 1.4),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('KEEP POST'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('REMOVE POST', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    try {
+                      await ref.read(firestoreServiceProvider).deleteAnadanam(id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Post deleted successfully')),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e')),
+                        );
+                      }
+                    }
+                  }
+                }
               },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, color: AppColors.error, size: 20),
+                      SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(color: AppColors.error)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/firestore_service.dart';
 import '../../core/providers/location_provider.dart';
+import '../../core/widgets/status_badge.dart';
 import 'anadanam_details_screen.dart';
 
 class MapViewScreen extends ConsumerStatefulWidget {
@@ -51,35 +52,66 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
   Future<ui.Image> _createIcon(Color color, IconData icon) async {
     final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);
-    const size = ui.Size(120, 120);
+    const size = ui.Size(140, 160);
 
-    // Draw Shadow
+    // 1. Draw Outer Halo (Glow effect)
+    final haloPaint = Paint()
+      ..color = color.withAlpha(40)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(70, 50), 65, haloPaint);
+    
+    final haloBorderPaint = Paint()
+      ..color = color.withAlpha(60)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(const Offset(70, 50), 65, haloBorderPaint);
+
+    // 2. Draw Shadow
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawCircle(const Offset(60, 65), 50, shadowPaint);
+      ..color = Colors.black.withAlpha(60)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    
+    Path shadowPath = Path();
+    shadowPath.addOval(const Rect.fromLTWH(30, 130, 80, 20));
+    canvas.drawPath(shadowPath, shadowPaint);
 
-    // Draw outer circle (white border)
-    final outerPaint = Paint()..color = Colors.white;
-    canvas.drawCircle(const Offset(60, 60), 50, outerPaint);
+    // 3. Draw Pin Shape (Teardrop)
+    final Paint pinPaint = Paint()..color = color;
+    final Paint borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6;
 
-    // Draw inner circle (primary color)
-    final innerPaint = Paint()..color = color;
-    canvas.drawCircle(const Offset(60, 60), 44, innerPaint);
+    final Path pinPath = Path();
+    pinPath.moveTo(70, 140);
+    pinPath.cubicTo(35, 95, 25, 75, 25, 50);
+    pinPath.arcTo(Rect.fromLTWH(25, 5, 90, 90), 3.14, 3.14, false);
+    pinPath.cubicTo(115, 75, 105, 95, 70, 140);
+    pinPath.close();
 
-    // Draw Icon
+    canvas.drawPath(pinPath, pinPaint);
+    canvas.drawPath(pinPath, borderPaint);
+
+    // 4. Draw Inner Highlight Circle
+    final Paint innerCirclePaint = Paint()..color = Colors.white.withAlpha(60);
+    canvas.drawCircle(const Offset(70, 50), 36, innerCirclePaint);
+
+    // 5. Draw Icon
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     textPainter.text = TextSpan(
       text: String.fromCharCode(icon.codePoint),
       style: TextStyle(
-        fontSize: 56,
+        fontSize: 48,
         fontFamily: icon.fontFamily,
         package: icon.fontPackage,
         color: Colors.white,
       ),
     );
     textPainter.layout();
-    textPainter.paint(canvas, Offset(60 - (textPainter.width / 2), 60 - (textPainter.height / 2)));
+    textPainter.paint(
+      canvas, 
+      Offset(70 - (textPainter.width / 2), 50 - (textPainter.height / 2)),
+    );
 
     final picture = pictureRecorder.endRecording();
     return await picture.toImage(size.width.toInt(), size.height.toInt());
@@ -91,7 +123,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
     
     final image = await _createIcon(color, iconData);
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(byteData!.buffer.asUint8List());
   }
 
   Future<void> _determinePosition() async {
@@ -192,9 +224,19 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
             builder: (context, snapshot) {
               if (snapshot.hasData) {
                 _markers = {};
+                final now = DateTime.now();
                 for (var doc in snapshot.data!.docs) {
                   final data = doc.data() as Map<String, dynamic>;
                   data['id'] = doc.id;
+                  
+                  // Filter out expired items
+                  if (data['expireAt'] != null) {
+                    final expireAt = (data['expireAt'] as Timestamp).toDate();
+                    if (expireAt.isBefore(now)) continue;
+                  } else {
+                    continue; // Skip items without expireAt
+                  }
+
                   final lat = data['latitude'] as double?;
                   final lng = data['longitude'] as double?;
                   
@@ -365,6 +407,13 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      StatusBadge(
+                        status: StatusBadge.calculate(
+                          data['startTime'] as String? ?? '',
+                          data['endTime'] as String? ?? '',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
@@ -404,6 +453,22 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () {
+                                final status = StatusBadge.calculate(
+                                  data['startTime'] as String? ?? '',
+                                  data['endTime'] as String? ?? '',
+                                );
+                                
+                                if (status == ServingStatus.ended) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('This Anadanam session has ended.'),
+                                      backgroundColor: AppColors.error,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                  return;
+                                }
+
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -434,7 +499,12 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                                 }
                               },
                               icon: const Icon(Icons.navigation, size: 16),
-                              label: const Text('Directions'),
+                              label: const Text(
+                                'Directions',
+                                style: TextStyle(fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primaryLight,
                                 foregroundColor: AppColors.primary,
@@ -453,6 +523,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

@@ -61,6 +61,45 @@ class _CreateAnadanamScreenState extends ConsumerState<CreateAnadanamScreen> {
                 color: AppColors.textSecondary,
               ),
             ),
+            const SizedBox(height: 20),
+            
+            // Guidelines Section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Serve Responsibly',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppColors.primaryDark,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Only post if food is genuinely being served.\n'
+                    '• Ensure location and serving times are accurate.\n'
+                    '• Fake or misleading posts hurt the community and those in need.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.charcoal.withOpacity(0.8),
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 32),
             
             // Photo Section

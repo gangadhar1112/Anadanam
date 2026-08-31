@@ -57,18 +57,31 @@ class ChatService {
   Future<String> getOrCreateChat(String otherUserId, String otherUserName) async {
     final user = _ref.read(authServiceProvider).currentUser;
     if (user == null) throw Exception('User not logged in');
+    
+    if (user.uid == otherUserId) {
+      throw Exception('Cannot chat with yourself');
+    }
 
     // Check if chat already exists
-    final existingChat = await _db
-        .collection('chats')
-        .where('participants', arrayContains: user.uid)
-        .get();
+    // Note: If this fails with permission-denied, ensure Firestore rules allow 
+    // array-contains queries on the 'participants' field for authenticated users.
+    try {
+      final existingChat = await _db
+          .collection('chats')
+          .where('participants', arrayContains: user.uid)
+          .get();
 
-    for (var doc in existingChat.docs) {
-      List participants = doc['participants'];
-      if (participants.contains(otherUserId)) {
-        return doc.id;
+      for (var doc in existingChat.docs) {
+        List participants = doc['participants'];
+        if (participants.contains(otherUserId)) {
+          return doc.id;
+        }
       }
+    } catch (e) {
+      if (e.toString().contains('permission-denied')) {
+        print('Firestore Permission Denied: Check security rules for "chats" collection.');
+      }
+      rethrow;
     }
 
     // Create new chat

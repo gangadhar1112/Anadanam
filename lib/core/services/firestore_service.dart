@@ -21,7 +21,6 @@ class FirestoreService {
   // Stream active Anadanam with advanced filters
   Stream<QuerySnapshot> streamActiveAnadanam({
     String? category,
-    String? foodType,
     double? maxDistance,
   }) {
     Query query = anadanamCollection.where('status', isEqualTo: 'approved');

@@ -112,7 +112,7 @@ class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
               food: formData.foodDetails,
               imageUrl: formData.imagePath != null ? null : formData.imageUrl,
               imageFile: formData.imagePath != null ? File(formData.imagePath!) : null,
-              status: ServingStatus.today,
+              status: ServingStatus.upcoming,
               likes: 0,
               comments: 0,
             ),
@@ -123,7 +123,35 @@ class _UploadPreviewScreenState extends ConsumerState<UploadPreviewScreen> {
             ),
             const SizedBox(height: 8),
             Text(formData.address.isEmpty ? 'Location selected on map' : formData.address),
-            const SizedBox(height: 40),
+            const SizedBox(height: 32),
+            
+            // Final commitment warning
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.gavel, color: AppColors.error, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'By submitting, you agree to post only genuine food services. Misleading posts hurt people in need.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.error.withOpacity(0.8),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

@@ -11,6 +11,7 @@ import '../chat/chat_detail_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/providers/location_provider.dart';
+import 'comments_section.dart';
 
 class AnadanamDetailsScreen extends ConsumerWidget {
   final Map<String, dynamic> data;
@@ -51,6 +52,24 @@ class AnadanamDetailsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openMapDirections(BuildContext context) async {
+    final lat = data['latitude'] as double?;
+    final lng = data['longitude'] as double?;
+    if (lat == null || lng == null) return;
+
+    final url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open map directions.')),
+        );
+      }
+    }
   }
 
   Widget _buildAppBar(BuildContext context) {
@@ -96,9 +115,17 @@ class AnadanamDetailsScreen extends ConsumerWidget {
                 final name = data['name'] ?? 'Anadanam';
                 final address = data['address'] ?? '';
                 final food = data['foodDetails'] ?? '';
+                final lat = data['latitude'];
+                final lng = data['longitude'];
+                
+                String mapUrl = '';
+                if (lat != null && lng != null) {
+                  mapUrl = '\n📍 Map: https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+                }
+
                 Share.share(
-                  'Join us for Anadanam at $name!\n\n'
-                  '📍 Location: $address\n'
+                  'Join us for Anadanam at $name!$mapUrl\n\n'
+                  '🏠 Address: $address\n'
                   '🍴 Food: $food\n'
                   '⏰ Time: ${data['startTime']} - ${data['endTime']}\n\n'
                   'Download the Anadanam app to find more food services around you.',
@@ -160,7 +187,12 @@ class AnadanamDetailsScreen extends ConsumerWidget {
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const StatusBadge(status: ServingStatus.servingNow),
+              StatusBadge(
+                status: StatusBadge.calculate(
+                  data['startTime'] as String? ?? '',
+                  data['endTime'] as String? ?? '',
+                ),
+              ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -213,27 +245,34 @@ class AnadanamDetailsScreen extends ConsumerWidget {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.place, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  data['address'] ?? 'No address provided',
-                  style: const TextStyle(fontSize: 16),
-                ),
+          InkWell(
+            onTap: () => _openMapDirections(context),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.place, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      data['address'] ?? 'No address provided',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
           const SizedBox(height: 20),
-          _buildMapPreview(),
+          _buildMapPreview(context),
           const SizedBox(height: 180), // More space to prevent overlap with bottom action bar
         ],
       ),
     );
   }
 
-  Widget _buildMapPreview() {
+  Widget _buildMapPreview(BuildContext context) {
     final lat = data['latitude'] as double?;
     final lng = data['longitude'] as double?;
 
@@ -260,35 +299,41 @@ class AnadanamDetailsScreen extends ConsumerWidget {
 
     final position = LatLng(lat, lng);
 
-    return Container(
-      height: 200,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey[300]!, width: 1),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: position,
-            zoom: 15,
-          ),
-          markers: {
-            Marker(
-              markerId: const MarkerId('anadanam_location'),
-              position: position,
+    return InkWell(
+      onTap: () => _openMapDirections(context),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        height: 200,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey[300]!, width: 1),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: AbsorbPointer(
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: position,
+                zoom: 15,
+              ),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('anadanam_location'),
+                  position: position,
+                ),
+              },
+              // Disable interactions for preview mode
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+              rotateGesturesEnabled: false,
+              mapToolbarEnabled: false,
             ),
-          },
-          // Disable interactions for preview mode
-          zoomControlsEnabled: false,
-          myLocationButtonEnabled: false,
-          scrollGesturesEnabled: false,
-          zoomGesturesEnabled: false,
-          tiltGesturesEnabled: false,
-          rotateGesturesEnabled: false,
-          mapToolbarEnabled: false,
+          ),
         ),
       ),
     );
@@ -312,20 +357,70 @@ class AnadanamDetailsScreen extends ConsumerWidget {
   }
 
   Widget _buildBottomAction(BuildContext context, WidgetRef ref) {
-    Future<void> openMapDirections() async {
-      final lat = data['latitude'] as double?;
-      final lng = data['longitude'] as double?;
-      if (lat == null || lng == null) return;
+    final currentUser = ref.watch(authServiceProvider).currentUser;
+    final isOwner = currentUser?.uid == data['userId'];
 
-      final url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not open map directions.')),
+    Future<void> completeAnadanam() async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.restaurant, color: AppColors.success),
+              SizedBox(width: 12),
+              Text('Serving Completed?'),
+            ],
+          ),
+          content: const Text(
+            'Important: Please confirm only if all food has been served. '
+            'Removing this post now will hide it from the map, and others who might be traveling here will no longer be able to find you.',
+            style: TextStyle(height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('NO, STILL SERVING', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('YES, ALL SERVED'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        try {
+          // Show loading
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const Center(child: CircularProgressIndicator()),
           );
+
+          await ref.read(firestoreServiceProvider).deleteAnadanam(data['id'] ?? '');
+          
+          if (context.mounted) {
+            Navigator.pop(context); // Close loading
+            Navigator.pop(context); // Go back to dashboard
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Anadanam completed and removed.')),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            Navigator.pop(context); // Close loading if open
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error: $e')),
+            );
+          }
         }
       }
     }
@@ -353,65 +448,58 @@ class AnadanamDetailsScreen extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: openMapDirections,
-                icon: const Icon(Icons.navigation_outlined),
-                label: const Text('GET DIRECTIONS'),
+            if (isOwner)
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: completeAnadanam,
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('COMPLETE ANADANAM'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _openMapDirections(context),
+                  icon: const Icon(Icons.navigation_outlined, size: 18),
+                  label: const Text(
+                    'Directions',
+                    style: TextStyle(fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  final otherUserId = data['userId'];
-                  final otherUserName = data['name'] ?? 'Provider';
-                  
-                  if (otherUserId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Provider information not available.')),
-                    );
-                    return;
-                  }
-                  
-                  // Show loading
-                  showDialog(
+            if (!isOwner) ...[
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () {
+                  showModalBottomSheet(
                     context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(child: CircularProgressIndicator()),
-                  );
-
-                  final chatId = await ref.read(chatServiceProvider).getOrCreateChat(otherUserId, otherUserName);
-                  
-                  if (context.mounted) {
-                    Navigator.pop(context); // Close loading
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ChatDetailScreen(
-                          chatId: chatId,
-                          otherUserName: otherUserName,
-                          otherUserId: otherUserId,
-                        ),
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => DraggableScrollableSheet(
+                      initialChildSize: 0.75,
+                      minChildSize: 0.5,
+                      maxChildSize: 0.95,
+                      expand: false,
+                      builder: (context, scrollController) => CommentsSection(
+                        postId: data['id'] ?? '',
+                        scrollController: scrollController,
                       ),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    Navigator.pop(context); // Close loading if open
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to start chat: $e')),
-                    );
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryLight,
-                foregroundColor: AppColors.primary,
-                elevation: 0,
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryLight,
+                  foregroundColor: AppColors.primary,
+                  elevation: 0,
+                ),
+                child: const Icon(Icons.chat_bubble_outline),
               ),
-              child: const Icon(Icons.chat_bubble_outline),
-            ),
+            ],
             const SizedBox(width: 12),
             Container(
               decoration: BoxDecoration(

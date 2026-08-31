@@ -11,6 +11,8 @@ class AnnaDaanCard extends StatelessWidget {
   final String distance;
   final String time;
   final String food;
+  final double? latitude;
+  final double? longitude;
   final String? imageUrl;
   final File? imageFile;
   final ServingStatus status;
@@ -29,6 +31,8 @@ class AnnaDaanCard extends StatelessWidget {
     required this.distance,
     required this.time,
     required this.food,
+    this.latitude,
+    this.longitude,
     this.imageUrl,
     this.imageFile,
     required this.status,
@@ -213,7 +217,7 @@ class AnnaDaanCard extends StatelessWidget {
                       const SizedBox(width: 16),
                       _ActionButton(
                         icon: Icons.chat_bubble_outline,
-                        label: 'Chat',
+                        label: 'Comments',
                         onPressed: onChatTap ?? () {},
                       ),
                       const Spacer(),
@@ -221,8 +225,13 @@ class AnnaDaanCard extends StatelessWidget {
                         icon: Icons.share_outlined,
                         label: 'Share',
                         onPressed: () {
+                          String mapUrl = '';
+                          if (latitude != null && longitude != null) {
+                            mapUrl = '\n📍 Map: https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+                          }
+
                           Share.share(
-                            'Join us for Anadanam at $title!\n\n'
+                            'Join us for Anadanam at $title!$mapUrl\n\n'
                             '🍴 Food: $food\n'
                             '⏰ Time: $time\n\n'
                             'Download the Anadanam app to find more food services around you.',

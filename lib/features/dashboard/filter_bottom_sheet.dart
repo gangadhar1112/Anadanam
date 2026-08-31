@@ -19,21 +19,18 @@ class FilterBottomSheet extends StatefulWidget {
 
 class _FilterBottomSheetState extends State<FilterBottomSheet> {
   late String _selectedDistance;
-  late String _selectedFoodType;
   late String _selectedCategory;
 
   @override
   void initState() {
     super.initState();
     _selectedDistance = widget.initialFilters['distance'] ?? '3 km';
-    _selectedFoodType = widget.initialFilters['foodType'] ?? 'All';
     _selectedCategory = widget.initialFilters['category'] ?? 'All';
   }
 
   void _resetFilters() {
     setState(() {
       _selectedDistance = '3 km';
-      _selectedFoodType = 'All';
       _selectedCategory = 'All';
     });
   }
@@ -72,14 +69,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             (val) => setState(() => _selectedDistance = val),
           ),
           const SizedBox(height: 24),
-          const Text('Food Type', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          _buildFilterChips(
-            ['All', 'Breakfast', 'Lunch', 'Dinner'],
-            _selectedFoodType,
-            (val) => setState(() => _selectedFoodType = val),
-          ),
-          const SizedBox(height: 24),
           const Text('Category', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           _buildFilterChips(
@@ -95,7 +84,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               onPressed: () {
                 Navigator.pop(context, {
                   'distance': _selectedDistance,
-                  'foodType': _selectedFoodType,
                   'category': _selectedCategory,
                 });
               },

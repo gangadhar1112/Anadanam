@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/annadaana_card.dart';
 import '../../core/widgets/filter_chip_bar.dart';
@@ -14,12 +13,11 @@ import 'package:anadanaapp/features/anadanam/map_view_screen.dart';
 import 'package:anadanaapp/features/profile/profile_screen.dart';
 import 'package:anadanaapp/features/profile/notifications_screen.dart';
 import 'package:anadanaapp/features/chat/chat_list_screen.dart';
-import 'package:anadanaapp/features/chat/chat_detail_screen.dart';
+import '../anadanam/comments_section.dart';
 import 'search_screen.dart';
 import 'filter_bottom_sheet.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/services/auth_service.dart';
-import '../../core/services/chat_service.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -35,7 +33,6 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
 
   Map<String, String> _activeFilters = {
     'distance': '3 km',
-    'foodType': 'All',
     'category': 'All',
   };
 
@@ -232,9 +229,6 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           'All',
           'Near Me',
           'Serving Now',
-          'Breakfast',
-          'Lunch',
-          'Dinner',
           'Temple',
           'NGO',
           'Community',
@@ -254,7 +248,6 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
     return StreamBuilder<QuerySnapshot>(
       stream: ref.watch(firestoreServiceProvider).streamActiveAnadanam(
             category: _activeFilters['category'],
-            foodType: _activeFilters['foodType'],
           ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -316,50 +309,10 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           final startTimeStr = data['startTime'] as String? ?? '';
           final endTimeStr = data['endTime'] as String? ?? '';
           
-          DateTime? parseTime(String timeStr, DateTime date) {
-            try {
-              final formats = [
-                DateFormat.jm(), // "12:00 PM"
-                DateFormat('h:mm a'), 
-                DateFormat('HH:mm'), 
-                DateFormat('H:mm'), 
-              ];
-              
-              for (var f in formats) {
-                try {
-                  final parsed = f.parse(timeStr.trim());
-                  return DateTime(date.year, date.month, date.day, parsed.hour, parsed.minute);
-                } catch (_) {}
-              }
-              return null;
-            } catch (_) {
-              return null;
-            }
-          }
-
+          // Handle "Serving Now" Filter
           if (category == 'Serving Now') {
-            final isRecurring = data['isRecurring'] as bool? ?? false;
-            final expireAt = (data['expireAt'] as Timestamp).toDate();
-            
-            // Check if it's even for today (expireAt is the end of the next session)
-            // If it's tomorrow, it can't be "Serving Now" today.
-            if (expireAt.day != now.day || expireAt.month != now.month || expireAt.year != now.year) {
-              return false; 
-            }
-
-            final startTime = parseTime(startTimeStr, now);
-            final endTime = parseTime(endTimeStr, now);
-            if (startTime == null || endTime == null) return false;
-            
-            return now.isAfter(startTime) && now.isBefore(endTime);
-          }
-
-          // Breakfast (5 AM - 11 AM), Lunch (11 AM - 4 PM), Dinner (4 PM - 11 PM)
-          final startTime = parseTime(startTimeStr, now);
-          if (startTime != null) {
-            if (category == 'Breakfast') return startTime.hour >= 5 && startTime.hour < 11;
-            if (category == 'Lunch') return startTime.hour >= 11 && startTime.hour < 16;
-            if (category == 'Dinner') return startTime.hour >= 16 && startTime.hour < 23;
+            final status = StatusBadge.calculate(startTimeStr, endTimeStr);
+            return status == ServingStatus.servingNow;
           }
 
           return true;
@@ -383,7 +336,6 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                       setState(() {
                         _activeFilters = {
                           'distance': '3 km',
-                          'foodType': 'All',
                           'category': 'All',
                         };
                         _selectedCategory = 'All';
@@ -411,15 +363,22 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                 final List likedBy = data['likedBy'] ?? [];
                 final isLiked = currentUserId != null && likedBy.contains(currentUserId);
 
+                final status = StatusBadge.calculate(
+                  data['startTime'] as String? ?? '',
+                  data['endTime'] as String? ?? '',
+                );
+
                 return AnnaDaanCard(
                   title: data['name'] ?? 'No Name',
                   type: data['type'] ?? 'Community Food',
                   distance: distance,
                   time: '${data['startTime']} – ${data['endTime']}',
                   food: data['foodDetails'] ?? '',
+                  latitude: data['latitude'] as double?,
+                  longitude: data['longitude'] as double?,
                   imageUrl: data['imageUrl'] ??
                       'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80',
-                  status: ServingStatus.servingNow,
+                  status: status,
                   isVerified: data['isVerified'] ?? false,
                   likes: data['likes'] ?? 0,
                   isLiked: isLiked,
@@ -433,49 +392,34 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                       );
                     }
                   },
-                  onChatTap: () async {
-                    final otherUserId = data['userId'];
-                    final otherUserName = data['name'] ?? 'Provider';
-                    if (otherUserId == null) return;
-                    if (currentUserId == null) {
+                  onChatTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => DraggableScrollableSheet(
+                        initialChildSize: 0.75,
+                        minChildSize: 0.5,
+                        maxChildSize: 0.95,
+                        expand: false,
+                        builder: (context, scrollController) => CommentsSection(
+                          postId: doc.id,
+                          scrollController: scrollController,
+                        ),
+                      ),
+                    );
+                  },
+                  onTap: () {
+                    if (status == ServingStatus.ended) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please login to chat.')),
+                        const SnackBar(
+                          content: Text('This Anadanam session has ended for today.'),
+                          backgroundColor: AppColors.error,
+                          behavior: SnackBarBehavior.floating,
+                        ),
                       );
                       return;
                     }
-
-                    // Show loading
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => const Center(child: CircularProgressIndicator()),
-                    );
-
-                    try {
-                      final chatId = await ref.read(chatServiceProvider).getOrCreateChat(otherUserId, otherUserName);
-                      if (context.mounted) {
-                        Navigator.pop(context); // Close loading
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatDetailScreen(
-                              chatId: chatId,
-                              otherUserName: otherUserName,
-                              otherUserId: otherUserId,
-                            ),
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: $e')),
-                        );
-                      }
-                    }
-                  },
-                  onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(

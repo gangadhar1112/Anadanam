@@ -137,6 +137,17 @@ class NotificationService {
         _handleForegroundMessage,
       );
 
+      // ----------------------------------------------------------
+      // Subscribe to Global Topics
+      // ----------------------------------------------------------
+
+      try {
+        await _messaging.subscribeToTopic('all_anadanam');
+        print('Subscribed to all_anadanam topic');
+      } catch (e) {
+        print('Error subscribing to topic: $e');
+      }
+
       print(
         'Notification service initialized successfully',
       );
