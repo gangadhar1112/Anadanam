@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import '../theme/app_colors.dart';
 import 'status_badge.dart';
 
 class AnnaDaanCard extends StatelessWidget {
+  final String? postId;
   final String title;
   final String type;
   final String distance;
@@ -26,6 +28,7 @@ class AnnaDaanCard extends StatelessWidget {
 
   const AnnaDaanCard({
     super.key,
+    this.postId,
     required this.title,
     required this.type,
     required this.distance,
@@ -217,7 +220,9 @@ class AnnaDaanCard extends StatelessWidget {
                       const SizedBox(width: 16),
                       _ActionButton(
                         icon: Icons.chat_bubble_outline,
-                        label: 'Comments',
+                        label: comments > 0
+                            ? '$comments ${comments == 1 ? 'Comment' : 'Comments'}'
+                            : 'Comments',
                         onPressed: onChatTap ?? () {},
                       ),
                       const Spacer(),
@@ -240,12 +245,149 @@ class AnnaDaanCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (postId != null && comments > 0) ...[
+                    const SizedBox(height: 12),
+                    _RecentCommentsPreview(
+                      postId: postId!,
+                      commentCount: comments,
+                      onTap: onChatTap,
+                    ),
+                  ],
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RecentCommentsPreview extends StatelessWidget {
+  final String postId;
+  final int commentCount;
+  final VoidCallback? onTap;
+
+  const _RecentCommentsPreview({
+    required this.postId,
+    required this.commentCount,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('anadanam')
+          .doc(postId)
+          .collection('comments')
+          .orderBy('timestamp', descending: true)
+          .limit(2)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final docs = snapshot.data!.docs;
+
+        return Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey[200]!),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: onTap,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Recent Comments ($commentCount)',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const Text(
+                      'View all',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final userName = data['userName'] ?? 'User';
+                final text = data['text'] ?? '';
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: InkWell(
+                    onTap: onTap,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          radius: 9,
+                          backgroundColor: AppColors.primaryLight,
+                          backgroundImage: data['userPhoto'] != null &&
+                                  (data['userPhoto'] as String).isNotEmpty
+                              ? NetworkImage(data['userPhoto'])
+                              : null,
+                          child: data['userPhoto'] == null ||
+                                  (data['userPhoto'] as String).isEmpty
+                              ? Text(
+                                  userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: RichText(
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black87,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: '$userName: ',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                TextSpan(text: text),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
     );
   }
 }

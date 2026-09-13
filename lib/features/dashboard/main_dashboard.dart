@@ -423,6 +423,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
                 );
 
                 return AnnaDaanCard(
+                  postId: doc.id,
                   title: data['name'] ?? 'No Name',
                   type: data['type'] ?? 'Community Food',
                   distance: distance,

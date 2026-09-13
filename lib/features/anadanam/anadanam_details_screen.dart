@@ -48,6 +48,7 @@ class AnadanamDetailsScreen extends ConsumerWidget {
                 sliver: SliverToBoxAdapter(
                   child: _buildContent(
                     context,
+                    ref,
                     distance,
                   ),
                 ),
@@ -250,6 +251,7 @@ class AnadanamDetailsScreen extends ConsumerWidget {
 
   Widget _buildContent(
       BuildContext context,
+      WidgetRef ref,
       String distance,
       ) {
     final foodDetails =
@@ -467,8 +469,96 @@ class AnadanamDetailsScreen extends ConsumerWidget {
           // ---------------------------------------------------------------
 
           _buildMapPreview(context),
+
+          const SizedBox(height: 24),
+
+          // ---------------------------------------------------------------
+          // COMMENTS
+          // ---------------------------------------------------------------
+
+          _buildCommentsSection(context, ref),
         ],
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // COMMENTS SECTION
+  // ---------------------------------------------------------------------------
+
+  Widget _buildCommentsSection(BuildContext context, WidgetRef ref) {
+    final postId = data['id'] ?? '';
+    final commentsCount = data['comments'] ?? 0;
+
+    void openCommentsModal() {
+      if (postId.isEmpty) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) => CommentsSection(
+            postId: postId,
+            scrollController: scrollController,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Comments ($commentsCount)',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            TextButton.icon(
+              onPressed: openCommentsModal,
+              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: openCommentsModal,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.mode_comment_outlined, size: 20, color: AppColors.textHint),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    commentsCount > 0
+                        ? 'Tap to see all comments or add your comment...'
+                        : 'No comments yet. Tap to add the first comment!',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textHint),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

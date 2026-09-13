@@ -11,13 +11,18 @@ class CommentService {
   CommentService(this._ref);
 
   // Get comments for a specific post
-  Stream<QuerySnapshot> getComments(String postId) {
-    return _db
+  Stream<QuerySnapshot> getComments(String postId, {int? limit}) {
+    Query query = _db
         .collection('anadanam')
         .doc(postId)
         .collection('comments')
-        .orderBy('timestamp', descending: true)
-        .snapshots(includeMetadataChanges: true);
+        .orderBy('timestamp', descending: true);
+
+    if (limit != null) {
+      query = query.limit(limit);
+    }
+
+    return query.snapshots(includeMetadataChanges: true);
   }
 
   // Add a comment
@@ -25,12 +30,34 @@ class CommentService {
     final user = _ref.read(authServiceProvider).currentUser;
     if (user == null) throw Exception('User not logged in');
 
+    String userName = 'User';
+    String? userPhoto = user.photoURL;
+
+    if (user.displayName != null && user.displayName!.isNotEmpty) {
+      userName = user.displayName!;
+    } else if (user.email != null && user.email!.isNotEmpty) {
+      userName = user.email!.split('@').first;
+    }
+
+    try {
+      final userDoc = await _db.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        if (data != null) {
+          if (data['displayName'] != null && (data['displayName'] as String).isNotEmpty) {
+            userName = data['displayName'];
+          }
+          if (data['photoUrl'] != null && (data['photoUrl'] as String).isNotEmpty) {
+            userPhoto = data['photoUrl'];
+          }
+        }
+      }
+    } catch (_) {}
+
     final commentData = {
       'userId': user.uid,
-      'userName': (user.displayName != null && user.displayName!.isNotEmpty) 
-          ? user.displayName 
-          : 'Anonymous',
-      'userPhoto': user.photoURL,
+      'userName': userName,
+      'userPhoto': userPhoto,
       'text': text,
       'timestamp': FieldValue.serverTimestamp(),
     };
