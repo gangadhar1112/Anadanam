@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 final firestoreServiceProvider = Provider((ref) => FirestoreService());
 
@@ -11,11 +12,14 @@ class FirestoreService {
 
   // Add new Anadanam
   Future<void> addAnadanam(Map<String, dynamic> data) async {
-    await anadanamCollection.add({
+    final docRef = await anadanamCollection.add({
       ...data,
       'createdAt': FieldValue.serverTimestamp(),
       'status': 'approved', // Changed from 'pending' for development testing
     });
+
+    // Trigger nearby notifications
+    notifyNearbyUsers({...data, 'id': docRef.id}, data['userId']);
   }
 
   // Stream active Anadanam with advanced filters
@@ -26,9 +30,10 @@ class FirestoreService {
     Query query = anadanamCollection.where('status', isEqualTo: 'approved');
     
     // Only apply type filter if the category matches known types
-    final knownTypes = ['Temple', 'NGO', 'Community', 'Other'];
+    final knownTypes = ['Temple', 'NGO', 'Community', 'Other', 'Others'];
     if (category != null && category != 'All' && knownTypes.contains(category)) {
-      query = query.where('type', isEqualTo: category);
+      final targetType = category == 'Others' ? 'Other' : category;
+      query = query.where('type', isEqualTo: targetType);
     }
     
     // Note: Breakfast, Lunch, Dinner, Serving Now filters are handled client-side 
@@ -68,7 +73,12 @@ class FirestoreService {
   Stream<QuerySnapshot> streamPendingAnadanam() {
     return anadanamCollection
         .where('status', isEqualTo: 'pending')
-        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  // Stream all Anadanam (Admin)
+  Stream<QuerySnapshot> streamAllAnadanam() {
+    return anadanamCollection
         .snapshots();
   }
 
@@ -122,9 +132,31 @@ class FirestoreService {
     });
   }
 
-  // Delete Anadanam post (Reject)
+  // Delete Anadanam post
   Future<void> deleteAnadanam(String id) async {
     await anadanamCollection.doc(id).delete();
+  }
+
+  // Cleanup expired posts (Extra safety layer)
+  Future<void> cleanupExpiredPosts() async {
+    final now = Timestamp.now();
+    
+    // 1. Delete posts where expireAt has passed
+    final expiredDocs = await anadanamCollection.where('expireAt', isLessThan: now).get();
+    
+    // 2. Also find old posts that might be missing the expireAt field (migration/old data)
+    final legacyDocs = await anadanamCollection.where('createdAt', isLessThan: Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 1)))).get();
+    
+    final allToRemove = {...expiredDocs.docs, ...legacyDocs.docs}.toList();
+
+    if (allToRemove.isNotEmpty) {
+      print('CLEANUP: Found ${allToRemove.length} expired/legacy posts. Deleting...');
+      final batch = _db.batch();
+      for (var doc in allToRemove) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
   }
 
   // Toggle Like
@@ -146,6 +178,84 @@ class FirestoreService {
         'likes': FieldValue.increment(1),
         'likedBy': FieldValue.arrayUnion([userId]),
       });
+    }
+  }
+
+  // Update User Location
+  Future<void> updateUserLocation(String uid, double lat, double lng) async {
+    await _db.collection('users').doc(uid).set({
+      'latitude': lat,
+      'longitude': lng,
+      'lastLocationUpdate': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  // Notify Nearby Users
+  Future<void> notifyNearbyUsers(Map<String, dynamic> postData, String currentUserId) async {
+    try {
+      final double? postLat = postData['latitude']?.toDouble();
+      final double? postLng = postData['longitude']?.toDouble();
+      
+      if (postLat == null || postLng == null) {
+        print('DEBUG: Post location is missing. Cannot send notifications.');
+        return;
+      }
+
+      if (currentUserId.isEmpty) {
+        print('DEBUG: currentUserId is empty. Notification logic aborted.');
+        return;
+      }
+
+      print('DEBUG: --- PROXIMITY NOTIFICATION START ---');
+      print('DEBUG: Post Location: $postLat, $postLng');
+      print('DEBUG: Uploader UID: "$currentUserId"');
+
+      // Get all users who have location data
+      // We use GetOptions(source: Source.server) to bypass cache and get latest locations
+      final usersSnapshot = await _db.collection('users').get(const GetOptions(source: Source.server));
+      
+      print('DEBUG: Found ${usersSnapshot.docs.length} users in database.');
+
+      for (var doc in usersSnapshot.docs) {
+        final targetUserId = doc.id;
+        
+        // STRICT CHECK: Do not send a notification to the person who just uploaded
+        if (targetUserId.trim() == currentUserId.trim()) {
+          print('DEBUG: User "$targetUserId" is the uploader. SKIPPING.');
+          continue;
+        }
+
+        final userData = doc.data() as Map<String, dynamic>;
+        final double? userLat = userData['latitude']?.toDouble();
+        final double? userLng = userData['longitude']?.toDouble();
+
+        if (userLat != null && userLng != null) {
+          final distance = Geolocator.distanceBetween(postLat, postLng, userLat, userLng);
+          
+          print('DEBUG: Checking User "$targetUserId" at ($userLat, $userLng). Distance: ${distance.toStringAsFixed(0)}m');
+          
+          if (distance <= 3000) { // 3 km radius
+            print('DEBUG: User "$targetUserId" is within 3km. WRITING notification to Firestore.');
+            await addNotification(targetUserId, {
+              'title': 'New Anadanam Nearby!',
+              'body': '${postData['name']} is serving ${postData['foodDetails']} near your location.',
+              'icon': '📍',
+              'type': 'nearby_post',
+              'postId': postData['id'] ?? '',
+              'timestamp': FieldValue.serverTimestamp(),
+            });
+            print('DEBUG: Notification SUCCESS for "$targetUserId"');
+          } else {
+            print('DEBUG: User "$targetUserId" is too far (${distance.toStringAsFixed(0)}m). skipping.');
+          }
+        } else {
+          print('DEBUG: User "$targetUserId" has NO location data in Firestore. skipping.');
+        }
+      }
+      print('DEBUG: --- PROXIMITY NOTIFICATION END ---');
+    } catch (e) {
+      print('!!! NOTIFICATION ERROR !!!');
+      print('Error detail: $e');
     }
   }
 }

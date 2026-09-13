@@ -35,6 +35,8 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
+  bool get isAdmin => currentUser?.email == 'gangadharg1112@gmail.com';
+
   // ============================================================
   // EMAIL SIGN IN
   // ============================================================
@@ -92,6 +94,19 @@ class AuthService {
       return credential;
     } catch (e) {
       print('Email Sign Up Error: $e');
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // RESET PASSWORD
+  // ============================================================
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } catch (e) {
+      print('Reset Password Error: $e');
       rethrow;
     }
   }
@@ -251,5 +266,8 @@ class AuthService {
     }
 
     await _auth.signOut();
+    
+    // Stop notification listener
+    _ref.read(notificationServiceProvider).stopListening();
   }
 }

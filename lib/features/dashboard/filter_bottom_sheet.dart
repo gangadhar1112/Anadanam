@@ -72,7 +72,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
           const Text('Category', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           _buildFilterChips(
-            ['All', 'Temple', 'NGO', 'Community', 'Gurudwara'],
+            ['All', 'Temple', 'NGO', 'Community', 'Others'],
             _selectedCategory,
             (val) => setState(() => _selectedCategory = val),
           ),

@@ -67,7 +67,34 @@ class LocationNotifier extends StateNotifier<LocationState> {
         );
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
-          address = '${p.subLocality ?? p.name}, ${p.locality}';
+          
+          bool isPlusCode(String? s) => s != null && s.contains('+');
+
+          String? displayName;
+          
+          // 1. Prefer Sub-locality (neighborhood)
+          if (p.subLocality != null && p.subLocality!.isNotEmpty && !isPlusCode(p.subLocality)) {
+            displayName = p.subLocality;
+          } 
+          // 2. Fallback to Locality (city)
+          else if (p.locality != null && p.locality!.isNotEmpty && !isPlusCode(p.locality)) {
+            displayName = p.locality;
+          }
+          // 3. Fallback to Name (might be street or plus code, last resort)
+          else if (p.name != null && p.name!.isNotEmpty && !isPlusCode(p.name)) {
+            displayName = p.name;
+          }
+          // 4. Ultimate fallback to administrative area
+          else {
+            displayName = p.subAdministrativeArea ?? p.administrativeArea ?? 'Unknown Location';
+          }
+
+          address = displayName!;
+          
+          // Add locality if we are showing a sub-locality
+          if (displayName == p.subLocality && p.locality != null && p.locality!.isNotEmpty) {
+            address += ', ${p.locality}';
+          }
         }
       } catch (_) {}
 

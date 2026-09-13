@@ -6,6 +6,10 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import '../../core/services/notification_service.dart';
 import 'my_anadanam_screen.dart';
+import 'privacy_policy_screen.dart';
+import 'help_support_screen.dart';
+import 'about_anadanam_screen.dart';
+import '../admin/admin_dashboard.dart';
 import '../auth/login_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -20,12 +24,6 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () {},
-          ),
-        ],
       ),
       body: user == null
           ? const Center(child: Text('Please login to view profile'))
@@ -100,6 +98,7 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   Widget _buildMenu(BuildContext context, WidgetRef ref) {
+    final authService = ref.read(authServiceProvider);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -115,23 +114,52 @@ class ProfileScreen extends ConsumerWidget {
               );
             },
           ),
-          _buildMenuItem(context, Icons.favorite_border, 'Liked Posts', onPressed: () {}),
-          _buildMenuItem(context, Icons.chat_bubble_outline, 'My Comments', onPressed: () {}),
-          const Divider(height: 40),
-          _buildMenuItem(context, Icons.notifications_none, 'Notification Settings', onPressed: () {}),
-          _buildMenuItem(context, Icons.location_on_outlined, 'Location Settings', onPressed: () {}),
-          _buildMenuItem(context, Icons.language, 'Language', trailing: 'English', onPressed: () {}),
-          const Divider(height: 40),
-          _buildMenuItem(context, Icons.privacy_tip_outlined, 'Privacy Policy', onPressed: () {}),
-          _buildMenuItem(context, Icons.help_outline, 'Help & Support', onPressed: () {}),
-          _buildMenuItem(context, Icons.info_outline, 'About AnnaDaan', onPressed: () {}),
+          if (authService.isAdmin) ...[
+            const Divider(height: 40),
+            _buildMenuItem(
+              context,
+              Icons.admin_panel_settings_outlined,
+              'Admin Console',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AdminDashboard()),
+                );
+              },
+            ),
+          ],
           const Divider(height: 40),
           _buildMenuItem(
-            context,
-            Icons.notification_important_outlined,
-            'Test Push Notification',
+            context, 
+            Icons.privacy_tip_outlined, 
+            'Privacy Policy', 
             onPressed: () {
-              ref.read(notificationServiceProvider).showTestNotification();
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+              );
+            },
+          ),
+          _buildMenuItem(
+            context, 
+            Icons.help_outline, 
+            'Help & Support', 
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
+              );
+            },
+          ),
+          _buildMenuItem(
+            context, 
+            Icons.info_outline, 
+            'About AnnaDaan', 
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AboutAnadanamScreen()),
+              );
             },
           ),
         ],

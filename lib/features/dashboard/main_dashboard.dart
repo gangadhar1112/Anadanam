@@ -18,6 +18,7 @@ import 'search_screen.dart';
 import 'filter_bottom_sheet.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/notification_service.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -35,6 +36,16 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
     'distance': '3 km',
     'category': 'All',
   };
+
+  String _getDisplayName(String address) {
+    if (address.isEmpty || address == 'Fetching...') return 'Fetching...';
+    final parts = address.split(',');
+    final name = parts.first.trim();
+    if (name.isEmpty && parts.length > 1) {
+      return parts[1].trim(); // Fallback to locality if sub-locality is empty
+    }
+    return name.isEmpty ? 'Unknown' : name;
+  }
 
   @override
   void dispose() {
@@ -74,6 +85,45 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(authServiceProvider).currentUser;
+
+    // Use ref.listen to start notifications only when user changes or app starts
+    // rather than every time the build method runs.
+    ref.listen(authServiceProvider, (previous, next) {
+      if (next.currentUser != null) {
+        ref.read(notificationServiceProvider).startListeningToUserNotifications(next.currentUser!.uid);
+      }
+    });
+
+    // Also start once if user is already logged in and listener not active
+    // This handles the first build case.
+    if (user != null) {
+      ref.read(notificationServiceProvider).startListeningToUserNotifications(user.uid);
+    }
+
+    // Sync user location to Firestore for nearby notifications
+    ref.listen(locationProvider, (previous, next) {
+      if (user != null && next.currentLatLng != null) {
+        ref.read(firestoreServiceProvider).updateUserLocation(
+          user.uid,
+          next.currentLatLng!.latitude,
+          next.currentLatLng!.longitude,
+        );
+      }
+    });
+
+    // Force an initial location update if not already synced
+    if (user != null) {
+      final loc = ref.read(locationProvider);
+      if (loc.currentLatLng != null) {
+        ref.read(firestoreServiceProvider).updateUserLocation(
+          user.uid,
+          loc.currentLatLng!.latitude,
+          loc.currentLatLng!.longitude,
+        );
+      }
+    }
+
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -128,10 +178,9 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
               Row(
                 children: [
                   Text(
-                    ref.watch(locationProvider).currentAddress,
+                    _getDisplayName(ref.watch(locationProvider).currentAddress),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  const Icon(Icons.keyboard_arrow_down, size: 16),
                 ],
               ),
             ],
@@ -232,6 +281,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           'Temple',
           'NGO',
           'Community',
+          'Others',
         ],
         selectedFilter: _selectedCategory,
         onFilterSelected: (filter) {
@@ -269,13 +319,16 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
         final activeDocs = docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           
-          // 1. Check Expiration
-          if (data['expireAt'] != null) {
-            final expireAt = (data['expireAt'] as Timestamp).toDate();
-            if (expireAt.isBefore(now)) return false;
-          } else {
-            return false; // Hide items without expireAt (old data)
+        // 1. Check Expiration (CRITICAL RULE: Hide immediately if time is up)
+        if (data['expireAt'] != null) {
+          final expireAt = (data['expireAt'] as Timestamp).toDate();
+          if (expireAt.isBefore(now)) {
+            print('DEBUG: Hiding expired post: ${data['name']}');
+            return false;
           }
+        } else {
+          return false; // Hide items without expireAt
+        }
 
           // 2. Apply Category Filters (Client-side for complex ones)
           final category = _activeFilters['category'];
@@ -300,9 +353,10 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
           }
 
           // Handle known types
-          final knownTypes = ['Temple', 'NGO', 'Community', 'Other'];
+          final knownTypes = ['Temple', 'NGO', 'Community', 'Other', 'Others'];
           if (knownTypes.contains(category)) {
-            return data['type'] == category;
+            final targetType = category == 'Others' ? 'Other' : category;
+            return data['type'] == targetType;
           }
 
           // Handle Meal Time Filters

@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'firestore_service.dart';
 import '../../firebase_options.dart';
@@ -13,6 +16,7 @@ Provider<NotificationService>((ref) {
 
 class NotificationService {
   final Ref _ref;
+  StreamSubscription? _notificationSubscription;
 
   final FirebaseMessaging _messaging =
       FirebaseMessaging.instance;
@@ -351,6 +355,77 @@ class NotificationService {
 
     return null;
   }
+
+  // ============================================================
+  // REAL-TIME FIRESTORE NOTIFICATIONS
+  // ============================================================
+
+  void startListeningToUserNotifications(String uid) {
+    // Cancel existing subscription if any
+    _notificationSubscription?.cancel();
+
+    print('Starting Firestore notification listener for user: $uid');
+    
+    // Track processed IDs as a class-level or long-lived variable if possible
+    // For now, we use the timestamp check which is more reliable across restarts
+    final DateTime listenerStartTime = DateTime.now();
+    
+    _notificationSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        // Handle both added and modified (for server timestamp updates)
+        if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
+          final data = change.doc.data() as Map<String, dynamic>;
+          
+          // Only show popup for brand new notifications
+          final timestamp = data['timestamp'] as Timestamp?;
+          
+          // If timestamp is null, it's a fresh addition (local). We'll wait for the server timestamp.
+          // If it has a timestamp, we verify it's very recent (created after we started listening)
+          if (timestamp != null && timestamp.toDate().isAfter(listenerStartTime.subtract(const Duration(seconds: 10)))) {
+            _showLocalNotification(
+              id: change.doc.id.hashCode,
+              title: data['title'] ?? 'AnnaDaan',
+              body: data['body'] ?? '',
+            );
+          }
+        }
+      }
+    });
+  }
+
+  void stopListening() {
+    _notificationSubscription?.cancel();
+    _notificationSubscription = null;
+  }
+
+  Future<void> _showLocalNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'high_importance_channel',
+      'High Importance Notifications',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const NotificationDetails details = NotificationDetails(android: androidDetails);
+
+    await _localNotifications.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: details,
+    );
+  }
 }
 
 // ================================================================
@@ -362,25 +437,56 @@ Future<void> firebaseMessagingBackgroundHandler(
     RemoteMessage message,
     ) async {
   try {
-    // Background messages run in a separate isolate.
-    // Firebase must be initialized in that isolate.
-    try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    } catch (e) {
-      if (!e.toString().contains('duplicate-app')) {
-        rethrow;
-      }
-    }
+    // 1. Initialize Firebase for the background isolate
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-    print(
-      'Handling background message: '
-          '${message.messageId}',
+    print('Handling background message: ${message.messageId}');
+
+    // 2. Extract location data from FCM data payload
+    final data = message.data;
+    if (data['latitude'] == null || data['longitude'] == null) return;
+
+    final double postLat = double.parse(data['latitude'].toString());
+    final double postLng = double.parse(data['longitude'].toString());
+
+    // 3. Get device's current/last position
+    // Note: Background location access might be needed for high accuracy, 
+    // but getLastKnownPosition is a good low-battery fallback.
+    Position? position = await Geolocator.getLastKnownPosition();
+    position ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
+
+    // 4. Calculate distance
+    final distance = Geolocator.distanceBetween(
+      postLat,
+      postLng,
+      position.latitude,
+      position.longitude,
     );
+
+    print('Background Distance Check: ${distance.toStringAsFixed(0)}m');
+
+    // 5. Show notification if within 3km
+    if (distance <= 3000) {
+      final FlutterLocalNotificationsPlugin localNotifications = FlutterLocalNotificationsPlugin();
+      
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'high_importance_channel',
+        'High Importance Notifications',
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      );
+
+      await localNotifications.show(
+        id: message.hashCode,
+        title: data['title'] ?? 'New Anadanam Nearby!',
+        body: data['body'] ?? 'Check out new food serving near you.',
+        notificationDetails: const NotificationDetails(android: androidDetails),
+      );
+    }
   } catch (e) {
-    print(
-      'Background notification error: $e',
-    );
+    print('Background notification error: $e');
   }
 }

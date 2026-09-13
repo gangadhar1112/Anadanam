@@ -14,7 +14,8 @@ import '../../core/widgets/status_badge.dart';
 import 'anadanam_details_screen.dart';
 
 class MapViewScreen extends ConsumerStatefulWidget {
-  const MapViewScreen({super.key});
+  final LatLng? initialTarget;
+  const MapViewScreen({super.key, this.initialTarget});
 
   @override
   ConsumerState<MapViewScreen> createState() => _MapViewScreenState();
@@ -127,6 +128,16 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
   }
 
   Future<void> _determinePosition() async {
+    if (widget.initialTarget != null) {
+      if (mounted) {
+        setState(() {
+          _initialPosition = widget.initialTarget!;
+          _isLoadingLocation = false;
+        });
+      }
+      return;
+    }
+
     bool serviceEnabled;
     LocationPermission permission;
 
