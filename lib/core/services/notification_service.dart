@@ -26,35 +26,28 @@ class NotificationService {
 
   NotificationService(this._ref);
 
+  // Request Notification Permission (Called strictly from PermissionScreen)
+  Future<NotificationSettings> requestNotificationPermission() async {
+    return await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+  }
+
   // ============================================================
-  // INITIALIZE
+  // INITIALIZE (Silent initialization without prompting permission)
   // ============================================================
 
   Future<void> init() async {
     try {
-      // ----------------------------------------------------------
-      // Request notification permission
-      // ----------------------------------------------------------
+      final NotificationSettings settings = await _messaging.getNotificationSettings();
 
-      final NotificationSettings settings =
-      await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
-
-      if (settings.authorizationStatus ==
-          AuthorizationStatus.authorized) {
-        print('User granted notification permission');
-      } else if (settings.authorizationStatus ==
-          AuthorizationStatus.provisional) {
-        print('User granted provisional permission');
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        print('Notification permission status: Authorized');
       } else {
-        print('User declined notification permission');
-
-        // Even if permission is denied, initialize
-        // local notifications.
+        print('Notification permission status: ${settings.authorizationStatus}');
       }
 
       // ----------------------------------------------------------

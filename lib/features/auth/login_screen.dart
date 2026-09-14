@@ -90,12 +90,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _signInWithFacebook() async {
     setState(() => _isLoading = true);
-    final result = await ref.read(authServiceProvider).signInWithFacebook();
-    if (result != null && result.user != null) {
-      await ref.read(authServiceProvider).syncUserProfile(result.user!);
-      if (mounted) _navigateToDashboard();
-    } else {
-      if (mounted) setState(() => _isLoading = false);
+    try {
+      final result = await ref.read(authServiceProvider).signInWithFacebook();
+      if (result != null && result.user != null) {
+        if (mounted) _navigateToDashboard();
+      } else {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Facebook login was cancelled or not completed.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        String msg = e.toString().replaceAll('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Facebook Login: $msg'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 

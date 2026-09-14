@@ -12,11 +12,26 @@ class FirestoreService {
 
   // Add new Anadanam
   Future<void> addAnadanam(Map<String, dynamic> data) async {
+    final now = DateTime.now();
+    final dateKey = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
     final docRef = await anadanamCollection.add({
       ...data,
       'createdAt': FieldValue.serverTimestamp(),
       'status': 'approved', // Changed from 'pending' for development testing
     });
+
+    // Maintain permanent aggregate statistics in Firestore stats/platform_stats
+    try {
+      final statsRef = _db.collection('stats').doc('platform_stats');
+      await statsRef.set({
+        'totalLifetimePosts': FieldValue.increment(1),
+        'posts_$dateKey': FieldValue.increment(1),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Platform stats update notice: $e');
+    }
 
     // Trigger nearby notifications
     notifyNearbyUsers({...data, 'id': docRef.id}, data['userId']);
@@ -67,6 +82,29 @@ class FirestoreService {
     // Temporarily removed orderBy again to bypass the NEW composite index requirement.
     // Re-enable this once the index for status + expireAt + createdAt is built.
     return query.snapshots();
+  }
+
+  // Stream all registered users (Admin Analytics)
+  Stream<QuerySnapshot> streamAllUsers() {
+    return _db.collection('users').snapshots();
+  }
+
+  // Stream posts posted today (Admin Analytics)
+  Stream<QuerySnapshot> streamTodayPosts() {
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    return anadanamCollection
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfToday))
+        .snapshots();
+  }
+
+  // Stream posts in past X days (Admin Analytics)
+  Stream<QuerySnapshot> streamPastDaysPosts(int days) {
+    final now = DateTime.now();
+    final pastDate = DateTime(now.year, now.month, now.day).subtract(Duration(days: days));
+    return anadanamCollection
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(pastDate))
+        .snapshots();
   }
 
   // Stream pending Anadanam (Admin)
@@ -137,25 +175,61 @@ class FirestoreService {
     await anadanamCollection.doc(id).delete();
   }
 
-  // Cleanup expired posts (Extra safety layer)
+  // Stream permanent lifetime posts count (preserved even after old posts are removed)
+  Stream<int> streamLifetimePostsCount() {
+    return anadanamCollection.snapshots().asyncMap((anadanamSnap) async {
+      int activeCount = anadanamSnap.docs.length;
+      try {
+        final statsDoc = await _db.collection('stats').doc('platform_stats').get();
+        if (statsDoc.exists && statsDoc.data() != null) {
+          int total = (statsDoc.data()!['totalLifetimePosts'] as num?)?.toInt() ?? 0;
+          if (total > activeCount) return total;
+        }
+      } catch (_) {}
+      return activeCount;
+    });
+  }
+
+  // Cleanup expired / past days posts (Removes from Firestore active collection while keeping total stats preserved)
   Future<void> cleanupExpiredPosts() async {
-    final now = Timestamp.now();
-    
-    // 1. Delete posts where expireAt has passed
-    final expiredDocs = await anadanamCollection.where('expireAt', isLessThan: now).get();
-    
-    // 2. Also find old posts that might be missing the expireAt field (migration/old data)
-    final legacyDocs = await anadanamCollection.where('createdAt', isLessThan: Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 1)))).get();
-    
-    final allToRemove = {...expiredDocs.docs, ...legacyDocs.docs}.toList();
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final startOfTodayTimestamp = Timestamp.fromDate(startOfToday);
+    final nowTimestamp = Timestamp.fromDate(now);
+
+    // 1. Find posts created before today (from yesterday or earlier)
+    final pastDocs = await anadanamCollection
+        .where('createdAt', isLessThan: startOfTodayTimestamp)
+        .get();
+
+    // 2. Find expired posts
+    final expiredDocs = await anadanamCollection
+        .where('expireAt', isLessThan: nowTimestamp)
+        .get();
+
+    final allToRemoveMap = <String, DocumentSnapshot>{};
+    for (var doc in pastDocs.docs) {
+      allToRemoveMap[doc.id] = doc;
+    }
+    for (var doc in expiredDocs.docs) {
+      allToRemoveMap[doc.id] = doc;
+    }
+
+    final allToRemove = allToRemoveMap.values.toList();
 
     if (allToRemove.isNotEmpty) {
-      print('CLEANUP: Found ${allToRemove.length} expired/legacy posts. Deleting...');
+      print('CLEANUP: Removing ${allToRemove.length} past/expired posts from Firestore while preserving counters...');
       final batch = _db.batch();
       for (var doc in allToRemove) {
         batch.delete(doc.reference);
       }
       await batch.commit();
+
+      // Record cleanup event in stats/platform_stats
+      await _db.collection('stats').doc('platform_stats').set({
+        'archivedPostsCount': FieldValue.increment(allToRemove.length),
+        'lastCleanupAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     }
   }
 

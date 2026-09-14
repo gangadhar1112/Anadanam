@@ -11,98 +11,61 @@ class MyAnadanamScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('My Anadanam'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Active'),
-              Tab(text: 'Pending'),
-              Tab(text: 'Past'),
-            ],
-            indicatorColor: AppColors.primary,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.textSecondary,
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildList(ref, 'approved'),
-            _buildList(ref, 'pending'),
-            _buildList(ref, 'rejected'), // Assuming Past/Rejected for now
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildList(WidgetRef ref, String status) {
     final user = ref.watch(authServiceProvider).currentUser;
-    if (user == null) return const Center(child: Text('Please login'));
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: ref.watch(firestoreServiceProvider).streamUserAnadanam(user.uid, status: status),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Anadanam'),
+      ),
+      body: user == null
+          ? const Center(child: Text('Please login to view your posts'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: ref.watch(firestoreServiceProvider).streamUserAnadanam(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.restaurant, size: 64, color: Colors.grey[300]),
-                const SizedBox(height: 16),
-                Text(
-                  'No posts found',
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              ],
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.restaurant_menu, size: 64, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'You haven\'t created any Anadanam posts yet.',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data!.docs;
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final id = docs[index].id;
+                    return _buildItem(context, ref, data, id);
+                  },
+                );
+              },
             ),
-          );
-        }
-
-        final docs = snapshot.data!.docs;
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(20),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final data = docs[index].data() as Map<String, dynamic>;
-            final id = docs[index].id;
-            return _buildItem(context, ref, data, id);
-          },
-        );
-      },
     );
   }
 
   Widget _buildItem(BuildContext context, WidgetRef ref, Map<String, dynamic> data, String id) {
-    final status = data['status'] ?? 'pending';
     final title = data['name'] ?? 'Untitled';
+    final food = data['foodDetails'] ?? 'Food details';
     final imageUrl = data['imageUrl'] ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80';
     final timestamp = data['createdAt'] as Timestamp?;
     final dateStr = timestamp != null 
         ? DateFormat('MMM d, h:mm a').format(timestamp.toDate()) 
-        : 'Unknown date';
-
-    Color statusColor;
-    switch (status) {
-      case 'approved':
-        statusColor = AppColors.success;
-        break;
-      case 'pending':
-        statusColor = AppColors.warning;
-        break;
-      case 'rejected':
-        statusColor = AppColors.error;
-        break;
-      default:
-        statusColor = AppColors.textHint;
-    }
+        : 'Recent';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -135,23 +98,9 @@ class MyAnadanamScreen extends ConsumerWidget {
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 4),
-                  Text(dateStr),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      status.toUpperCase(),
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  Text('🍴 $food', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  Text(dateStr, style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
                 ],
               ),
             ),
@@ -166,7 +115,7 @@ class MyAnadanamScreen extends ConsumerWidget {
                       title: const Text('Remove this post?'),
                       content: const Text(
                         'This will delete the post permanently. '
-                        'Please ensure that food serving is completed before removing, as this helps people looking for food find active locations.',
+                        'Please ensure that food serving is completed before removing.',
                         style: TextStyle(height: 1.4),
                       ),
                       actions: [

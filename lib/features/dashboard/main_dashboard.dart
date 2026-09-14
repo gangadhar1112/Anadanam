@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/annadaana_card.dart';
@@ -12,13 +14,13 @@ import 'package:anadanaapp/features/anadanam/anadanam_details_screen.dart';
 import 'package:anadanaapp/features/anadanam/map_view_screen.dart';
 import 'package:anadanaapp/features/profile/profile_screen.dart';
 import 'package:anadanaapp/features/profile/notifications_screen.dart';
-import 'package:anadanaapp/features/chat/chat_list_screen.dart';
 import '../anadanam/comments_section.dart';
 import 'search_screen.dart';
 import 'filter_bottom_sheet.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/notification_service.dart';
+import '../../core/services/in_app_update_service.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -48,6 +50,15 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(firestoreServiceProvider).cleanupExpiredPosts();
+      InAppUpdateService.checkForUpdate();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -73,8 +84,6 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
     if (index == 1) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const MapViewScreen()));
     } else if (index == 2) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatListScreen()));
-    } else if (index == 3) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen()));
     } else if (index == 4) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
@@ -162,6 +171,8 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
   }
 
   Widget _buildHeader() {
+    final user = ref.watch(authServiceProvider).currentUser;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
@@ -186,20 +197,58 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
             ],
           ),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.notifications_none_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())),
-          ),
           InkWell(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())),
-            child: const CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.primaryLight,
-              child: Icon(Icons.person_outline, color: AppColors.primary),
-            ),
+            child: _buildHeaderProfileAvatar(user),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildHeaderProfileAvatar(User? user) {
+    if (user == null) {
+      return const CircleAvatar(
+        radius: 18,
+        backgroundColor: AppColors.primaryLight,
+        child: Icon(Icons.person_outline, color: AppColors.primary),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: ref.watch(firestoreServiceProvider).getUserProfile(user.uid),
+      builder: (context, snapshot) {
+        final userData = snapshot.data?.data() as Map<String, dynamic>?;
+        final photoUrl = userData?['photoUrl'] ?? user.photoURL;
+
+        if (photoUrl != null && photoUrl.toString().trim().isNotEmpty) {
+          final String urlStr = photoUrl.toString().trim();
+          if (urlStr.startsWith('data:image') || !urlStr.startsWith('http')) {
+            try {
+              final String base64Str = urlStr.contains(',')
+                  ? urlStr.split(',').last
+                  : urlStr;
+              return CircleAvatar(
+                radius: 18,
+                backgroundColor: AppColors.primaryLight,
+                backgroundImage: MemoryImage(base64Decode(base64Str)),
+              );
+            } catch (_) {}
+          } else {
+            return CircleAvatar(
+              radius: 18,
+              backgroundColor: AppColors.primaryLight,
+              backgroundImage: NetworkImage(urlStr),
+            );
+          }
+        }
+
+        return const CircleAvatar(
+          radius: 18,
+          backgroundColor: AppColors.primaryLight,
+          child: Icon(Icons.person_outline, color: AppColors.primary),
+        );
+      },
     );
   }
 
@@ -315,20 +364,28 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
         final now = DateTime.now();
         final currentUserId = ref.watch(authServiceProvider).currentUser?.uid;
 
-        // Filter out expired items and apply advanced category filters client-side
+        // Filter out expired & past days items and apply advanced category filters client-side
+        final startOfToday = DateTime(now.year, now.month, now.day);
         final activeDocs = docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          
-        // 1. Check Expiration (CRITICAL RULE: Hide immediately if time is up)
-        if (data['expireAt'] != null) {
-          final expireAt = (data['expireAt'] as Timestamp).toDate();
-          if (expireAt.isBefore(now)) {
-            print('DEBUG: Hiding expired post: ${data['name']}');
-            return false;
+
+          // 1. Check Today's Post Only (Hide posts created before today)
+          if (data['createdAt'] != null) {
+            final createdAt = (data['createdAt'] as Timestamp).toDate();
+            if (createdAt.isBefore(startOfToday)) {
+              return false;
+            }
           }
-        } else {
-          return false; // Hide items without expireAt
-        }
+          
+          // 2. Check Expiration (CRITICAL RULE: Hide immediately if time is up)
+          if (data['expireAt'] != null) {
+            final expireAt = (data['expireAt'] as Timestamp).toDate();
+            if (expireAt.isBefore(now)) {
+              return false;
+            }
+          } else {
+            return false; // Hide items without expireAt
+          }
 
           // 2. Apply Category Filters (Client-side for complex ones)
           final category = _activeFilters['category'];
@@ -504,7 +561,7 @@ class _MainDashboardState extends ConsumerState<MainDashboard> {
             _buildNavItem(Icons.home, 'Home', 0),
             _buildNavItem(Icons.map_outlined, 'Map', 1),
             const SizedBox(width: 40), // Space for FAB
-            _buildNavItem(Icons.chat_bubble_outline, 'Chat', 2),
+            _buildNavItem(Icons.notifications_none_outlined, 'Notifications', 2),
             _buildNavItem(Icons.person_outline, 'Me', 4),
           ],
         ),

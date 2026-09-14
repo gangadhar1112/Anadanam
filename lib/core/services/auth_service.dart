@@ -110,32 +110,29 @@ class AuthService {
       rethrow;
     }
   }
-
+ 
   // ============================================================
   // FACEBOOK SIGN IN
   // ============================================================
 
   Future<UserCredential?> signInWithFacebook() async {
     try {
-      final LoginResult result =
-      await FacebookAuth.instance.login();
+      final LoginResult result = await FacebookAuth.instance.login(
+        permissions: ['public_profile', 'email'],
+      );
 
       if (result.status == LoginStatus.success) {
-        final AccessToken? accessToken =
-            result.accessToken;
+        final AccessToken? accessToken = result.accessToken;
 
         if (accessToken == null) {
-          print('Facebook access token is null');
-          return null;
+          throw Exception('Facebook access token is missing');
         }
 
-        final OAuthCredential credential =
-        FacebookAuthProvider.credential(
+        final OAuthCredential credential = FacebookAuthProvider.credential(
           accessToken.tokenString,
         );
 
-        final UserCredential userCredential =
-        await _auth.signInWithCredential(
+        final UserCredential userCredential = await _auth.signInWithCredential(
           credential,
         );
 
@@ -146,16 +143,20 @@ class AuthService {
         }
 
         return userCredential;
+      } else if (result.status == LoginStatus.cancelled) {
+        print('Facebook login cancelled by user');
+        return null;
+      } else {
+        final errorMsg = result.message ?? 'Status: ${result.status}';
+        print('Facebook login failed: $errorMsg');
+        throw Exception('Facebook login failed: $errorMsg');
       }
-
-      print(
-        'Facebook login failed: ${result.status}',
-      );
-
-      return null;
+    } on FirebaseAuthException catch (e) {
+      print('FirebaseAuthException during Facebook login: ${e.code} - ${e.message}');
+      throw Exception('Firebase Auth (${e.code}): ${e.message ?? 'Invalid credential'}');
     } catch (e) {
       print('Facebook Sign In Error: $e');
-      return null;
+      rethrow;
     }
   }
 
